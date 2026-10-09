@@ -1,0 +1,14 @@
+# Integration-owned dashboard registered automatically at /machine-monitor.
+# The integration serves and loads the JS module; no /www copy or resource
+# entry is needed. This file can also be used as a standalone view example.
+# Click a machine in the overview to open Real Flow, statistics and events.
+views:
+  - title: Machine Monitor
+    path: machines
+    icon: mdi:chart-timeline-variant
+    type: panel
+    cards:
+      - type: custom:machine-monitor-card
+        mode: detailed
+        period: today
+        sort_by: name

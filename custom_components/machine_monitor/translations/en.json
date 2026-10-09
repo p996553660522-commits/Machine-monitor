@@ -1,0 +1,280 @@
+{
+  "title": "Machine Monitor",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add Machine",
+        "description": "Bind the four physical inputs of an ESP32 node to existing Home Assistant binary sensors. The meaning of every input is configured later in the machine profile.",
+        "data": {
+          "name": "Machine name",
+          "input_1": "Input 1",
+          "input_2": "Input 2",
+          "input_3": "Input 3",
+          "input_4": "Input 4"
+        },
+        "data_description": {
+          "name": "For example: Malarka, Laser #1, Press #2",
+          "input_1": "Physical signal 1 of the ESP32 node",
+          "input_2": "Physical signal 2 of the ESP32 node",
+          "input_3": "Physical signal 3 of the ESP32 node",
+          "input_4": "Physical signal 4 of the ESP32 node"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure machine",
+        "description": "Change the source entities of {name}.",
+        "data": {
+          "name": "Machine name",
+          "input_1": "Input 1",
+          "input_2": "Input 2",
+          "input_3": "Input 3",
+          "input_4": "Input 4"
+        }
+      }
+    },
+    "error": {
+      "entity_required": "Select an entity",
+      "own_entity": "Select an original MQTT/device binary sensor. Machine Monitor diagnostic entities cannot be used as sources."
+    },
+    "abort": {
+      "already_configured": "These entities are already used by another machine"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Machine profile",
+        "description": "Define what every physical input means for {name}. The semantic state determines how the machine is classified in statistics and on the timeline.",
+        "data": {
+          "description": "Machine description",
+          "enabled": "Monitoring enabled",
+          "no_active_state": "State when no input is active",
+          "downtime_threshold": "Downtime threshold (minutes)",
+          "row_order": "Row order in Real Flow",
+          "input_1": "Input 1",
+          "input_2": "Input 2",
+          "input_3": "Input 3",
+          "input_4": "Input 4",
+          "retention_days": "History retention (days)",
+          "shifts": "Production shifts"
+        },
+        "data_description": {
+          "description": "Optional text shown under the machine name",
+          "no_active_state": "Used when the machine is reachable but nothing is running",
+          "downtime_threshold": "Downtime longer than this counts as a downtime period",
+          "row_order": "Comma-separated slots, e.g. input_3, input_1, input_4, input_2",
+          "retention_days": "Closed intervals older than this period are removed. Each machine has its own retention.",
+          "shifts": "One per line: Name | 08:00 | 20:00. Overnight supported; shifts must not overlap. Times use the Home Assistant timezone."
+        },
+        "menu_options": {
+          "machine": "Machine settings",
+          "input_1": "Input 1",
+          "input_2": "Input 2",
+          "input_3": "Input 3",
+          "input_4": "Input 4"
+        }
+      },
+      "machine": {
+        "title": "Machine profile",
+        "description": "Define what every physical input means for {name}. The semantic state determines how the machine is classified in statistics and on the timeline.",
+        "data": {
+          "description": "Machine description",
+          "enabled": "Monitoring enabled",
+          "no_active_state": "State when no input is active",
+          "downtime_threshold": "Downtime threshold (minutes)",
+          "row_order": "Row order in Real Flow",
+          "input_1": "Input 1",
+          "input_2": "Input 2",
+          "input_3": "Input 3",
+          "input_4": "Input 4",
+          "retention_days": "History retention (days)",
+          "shifts": "Production shifts"
+        },
+        "data_description": {
+          "description": "Optional text shown under the machine name",
+          "no_active_state": "Used when the machine is reachable but nothing is running",
+          "downtime_threshold": "Downtime longer than this counts as a downtime period",
+          "row_order": "Comma-separated slots, e.g. input_3, input_1, input_4, input_2",
+          "retention_days": "Closed intervals older than this period are removed. Each machine has its own retention.",
+          "shifts": "One per line: Name | 08:00 | 20:00. Overnight supported; shifts must not overlap. Times use the Home Assistant timezone."
+        }
+      },
+      "input": {
+        "title": "Input {slot}",
+        "description": "Meaning of the physical input {slot} of {machine}. Current semantic state: {state}",
+        "data": {
+          "entity_id": "Source entity",
+          "input_name": "Display name",
+          "input_description": "Description",
+          "semantic_state": "Semantic state",
+          "priority": "Priority override",
+          "icon": "Icon",
+          "color": "Colour",
+          "enabled": "Enabled",
+          "show_in_timeline": "Show in Real Flow",
+          "include_in_statistics": "Include in statistics"
+        },
+        "data_description": {
+          "semantic_state": "What this signal means for the machine",
+          "priority": "Leave empty to use the default priority of the state. Higher wins when several inputs are active."
+        }
+      },
+      "input_1": {
+        "title": "Input {slot}",
+        "description": "Meaning of the physical input {slot} of {machine}. Current semantic state: {state}",
+        "data": {
+          "entity_id": "Source entity",
+          "input_name": "Display name",
+          "input_description": "Description",
+          "semantic_state": "Semantic state",
+          "priority": "Priority override",
+          "icon": "Icon",
+          "color": "Colour",
+          "enabled": "Enabled",
+          "show_in_timeline": "Show in Real Flow",
+          "include_in_statistics": "Include in statistics"
+        },
+        "data_description": {
+          "semantic_state": "What this signal means for the machine",
+          "priority": "Leave empty to use the default priority of the state. Higher wins when several inputs are active."
+        }
+      },
+      "input_2": {
+        "title": "Input {slot}",
+        "description": "Meaning of the physical input {slot} of {machine}. Current semantic state: {state}",
+        "data": {
+          "entity_id": "Source entity",
+          "input_name": "Display name",
+          "input_description": "Description",
+          "semantic_state": "Semantic state",
+          "priority": "Priority override",
+          "icon": "Icon",
+          "color": "Colour",
+          "enabled": "Enabled",
+          "show_in_timeline": "Show in Real Flow",
+          "include_in_statistics": "Include in statistics"
+        },
+        "data_description": {
+          "semantic_state": "What this signal means for the machine",
+          "priority": "Leave empty to use the default priority of the state. Higher wins when several inputs are active."
+        }
+      },
+      "input_3": {
+        "title": "Input {slot}",
+        "description": "Meaning of the physical input {slot} of {machine}. Current semantic state: {state}",
+        "data": {
+          "entity_id": "Source entity",
+          "input_name": "Display name",
+          "input_description": "Description",
+          "semantic_state": "Semantic state",
+          "priority": "Priority override",
+          "icon": "Icon",
+          "color": "Colour",
+          "enabled": "Enabled",
+          "show_in_timeline": "Show in Real Flow",
+          "include_in_statistics": "Include in statistics"
+        },
+        "data_description": {
+          "semantic_state": "What this signal means for the machine",
+          "priority": "Leave empty to use the default priority of the state. Higher wins when several inputs are active."
+        }
+      },
+      "input_4": {
+        "title": "Input {slot}",
+        "description": "Meaning of the physical input {slot} of {machine}. Current semantic state: {state}",
+        "data": {
+          "entity_id": "Source entity",
+          "input_name": "Display name",
+          "input_description": "Description",
+          "semantic_state": "Semantic state",
+          "priority": "Priority override",
+          "icon": "Icon",
+          "color": "Colour",
+          "enabled": "Enabled",
+          "show_in_timeline": "Show in Real Flow",
+          "include_in_statistics": "Include in statistics"
+        },
+        "data_description": {
+          "semantic_state": "What this signal means for the machine",
+          "priority": "Leave empty to use the default priority of the state. Higher wins when several inputs are active."
+        }
+      }
+    },
+    "error": {
+      "name_required": "Enter a machine name",
+      "own_entity": "Select an original MQTT/device binary sensor. Machine Monitor diagnostic entities cannot be used as sources.",
+      "entity_required": "Select an entity",
+      "invalid_history_settings": "Select a supported retention. Shifts require unique names, HH:MM times, and no overlaps."
+    }
+  },
+  "selector": {
+    "semantic_state": {
+      "options": {
+        "work": "Work",
+        "idle": "Idle",
+        "preparation": "Preparation",
+        "waiting": "Waiting",
+        "technical": "Technical",
+        "cooling": "Cooling",
+        "heating": "Heating",
+        "alarm": "Alarm",
+        "other": "Other",
+        "offline": "Offline"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "current_state": {
+        "name": "Current state"
+      },
+      "state_duration": {
+        "name": "Time in current state"
+      },
+      "work_time_today": {
+        "name": "Work time today"
+      },
+      "idle_time_today": {
+        "name": "Idle time today"
+      },
+      "work_percent_today": {
+        "name": "Work share today"
+      },
+      "idle_percent_today": {
+        "name": "Idle share today"
+      },
+      "downtime_count_today": {
+        "name": "Downtime periods today"
+      },
+      "last_change": {
+        "name": "Last state change"
+      }
+    },
+    "binary_sensor": {
+      "input_1": {
+        "name": "Input 1"
+      },
+      "input_2": {
+        "name": "Input 2"
+      },
+      "input_3": {
+        "name": "Input 3"
+      },
+      "input_4": {
+        "name": "Input 4"
+      }
+    }
+  },
+  "services": {
+    "clear_history": {
+      "name": "Clear history",
+      "description": "Deletes the stored timeline of a machine.",
+      "fields": {
+        "entry_id": {
+          "name": "Config entry",
+          "description": "Leave empty to clear every machine."
+        }
+      }
+    }
+  }
+}

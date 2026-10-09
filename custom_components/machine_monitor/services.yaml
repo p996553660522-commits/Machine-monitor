@@ -1,0 +1,11 @@
+clear_history:
+  name: Clear history
+  description: Deletes the stored timeline of one machine or of all machines.
+  fields:
+    entry_id:
+      name: Config entry
+      description: Config entry of the machine. Leave empty to clear every machine.
+      required: false
+      selector:
+        config_entry:
+          integration: machine_monitor
