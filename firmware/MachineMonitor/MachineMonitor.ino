@@ -617,7 +617,7 @@ void publishDiscovery(uint8_t channel)
   payload += ".local/\",";
   payload += "\"manufacturer\":\"DIY\",";
   payload += "\"model\":\"ESP32 Machine Monitor\",";
-  payload += "\"sw_version\":\"1.2\"";
+  payload += "\"sw_version\":\"1.2.1\"";
 
   payload += "}";
 
@@ -1329,12 +1329,6 @@ void setup()
   mqttClient.setBufferSize(1024);
 
   // ----------------------------------------------------------
-  // Web server
-  // ----------------------------------------------------------
-
-  setupWebServer();
-
-  // ----------------------------------------------------------
   // Start WiFi recovery system
   // ----------------------------------------------------------
 
@@ -1349,6 +1343,11 @@ void setup()
     // No saved WiFi at all.
     startConfigAP();
   }
+
+  // WiFi.mode() in either branch initializes the network stack before
+  // WebServer::begin() opens a TCP socket. Starting the server earlier can
+  // assert in lwIP/xQueueSemaphoreTake on a fresh boot.
+  setupWebServer();
 
   Serial.println();
   Serial.println("================================");

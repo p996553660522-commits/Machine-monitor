@@ -1,6 +1,6 @@
 # Устройство мониторинга ESP32
 
-Исходный файл: [`firmware/MachineMonitor/MachineMonitor.ino`](../firmware/MachineMonitor/MachineMonitor.ino). Версия прошивки — `1.2`, HA-интеграции — `1.3.0`. В этой версии добавлено отключение отдельных линий; GPIO, LOW → ON и существующие state topics сохранены.
+Исходный файл: [`firmware/MachineMonitor/MachineMonitor.ino`](../firmware/MachineMonitor/MachineMonitor.ino). Версия прошивки — `1.2.1`, HA-интеграции — `1.3.0`. В этой версии добавлено отключение отдельных линий; GPIO, LOW → ON и существующие state topics сохранены.
 
 ## Оборудование и сигналы
 
@@ -100,3 +100,7 @@
 | `machine_monitor/<deviceId>/availability/inputN` | `online` / `offline` | Доступность конкретной линии |
 
 Discovery использует оба availability topic (модуль и линия), `availability_mode: all`, а также `json_attributes_topic`. Это стандартные возможности [HA MQTT binary sensor](https://www.home-assistant.io/integrations/binary_sensor.mqtt/). Существующие `state/inputN` с ON/OFF, device ID и Discovery unique_id не изменены. Семантика машины остаётся в HA, в ESP32 добавлено только управление сбором физических входов.
+
+## Исправление первого запуска — firmware 1.2.1
+
+В версии 1.2 сервер HTTP запускался до инициализации Wi-Fi/lwIP. На некоторых ESP32 core это приводило к `assert failed: xQueueSemaphoreTake` сразу после `Inputs initialized`. В 1.2.1 сервер запускается после выбора STA или конфигурационной AP. Перепрошейте устройство; стирать NVS или менять настройки HA не требуется. Первый запуск без сохранённого SSID должен показать STARTING CONFIGURATION AP, адрес AP, Web server started и SYSTEM READY.

@@ -31,3 +31,9 @@ Integration 1.3.0 / firmware 1.2, checked in the installed component and reposit
 New regressions cover one/three-input device creation, adding/removing optional bindings, missing slot options editor, three enabled + disabled unavailable fourth input at startup, attribute-only disable of ON, closing/reopening physical intervals, disable/re-enable OFF, all lines disabled, independent manual profile permission, live event notification, reload persistence and preserved work/idle/offline totals. Existing concurrency, priority, startup reconciliation, row order, filters, reports, event-driven refresh and fallback tests remain passing.
 
 Python tests still use HA boundaries and Node uses a minimal DOM. The new firmware has **not** been flashed or tested electrically on a physical three-optocoupler device. On-device acceptance: turn off Input 4, save/reboot, verify its MQTT source is unavailable with acquisition_enabled=false, confirm Machine Monitor stays online when inputs 1–3 are valid, toggle each connected input, and inspect independent history/statistics. A reboot/real module disconnect should still produce OFFLINE for enabled sources.
+
+## First-boot network initialization fix — 2026-10-14
+
+Firmware 1.2.1 moves HTTP server startup after WiFi initialization in both boot branches (saved STA credentials and empty-NVS configuration AP). Installed ESP32 core source confirms NetworkServer::begin opens a TCP socket, while WiFi initialization calls Network.begin/esp_netif_init. The reported crash occurs before the old web-server startup completion log.
+
+Two source-level regression guards pass for startup order and initialization in both WiFi helpers. These guards do not execute the sketch on hardware. Full ESP32 Dev Module compilation passed with Arduino ESP32 core 3.3.11 and PubSubClient 2.8 (977156 flash bytes, 49816 global RAM bytes); the user must confirm first boot on the actual board. No HA monitoring changes or NVS reset is required.

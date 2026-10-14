@@ -2,7 +2,7 @@
 
 Equipment monitoring with **ESP32 → MQTT → Home Assistant**. The device observes four physical signals; the integration keeps independent input history, resolves semantic machine states and presents a reusable monitoring dashboard.
 
-**Integration:** 1.3.0 · **Firmware:** Arduino sketch 1.2 (per-input enable switches) · **Interface:** Русский / English
+**Integration:** 1.3.0 · **Firmware:** Arduino sketch 1.2.1 (per-input enable switches) · **Interface:** Русский / English
 
 ## Возможности
 
