@@ -246,3 +246,15 @@ test('physical interval tooltips are reachable with touch and keyboard',()=>{
   rows.onkeydown({target:bar,key:'Enter',currentTarget:bar,preventDefault(){}});
   assert.equal(tooltip.style.display,'block');
 });
+
+test('disabled acquisition has an explicit label and preserves physical historical bars and totals',()=>{
+  const {card}=setup();prepare(card);
+  const row=card._detail.input_timeline.rows[0];
+  row.enabled=false;row.acquisition_enabled=false;row.on=null;row.available=false;
+  card._dirty=true;card._render();
+  const summary=walk(card.shadowRoot).find(n=>n.className==='mm-summary-row');
+  assert.ok(summary.textContent.includes('Disabled'));
+  assert.ok(!summary.textContent.includes('UNKNOWN'));
+  assert.ok(walk(flowBox(card)).some(n=>String(n.title).includes(row.name)));
+  assert.ok(row.on_seconds>=0);
+});

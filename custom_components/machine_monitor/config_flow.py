@@ -62,6 +62,15 @@ def _binary_sensor_selector(hass=None) -> selector.EntitySelector:
     )
 
 
+def _binding_schema(name, sources, hass):
+    """All physical slots are optional; preserve valid current selections."""
+    return vol.Schema({
+        vol.Optional(CONF_NAME, default=name): str,
+        **{vol.Optional(slot, **({'default': sources[slot]} if sources.get(slot) else {})):
+           _binary_sensor_selector(hass) for slot in INPUT_SLOTS},
+    })
+
+
 def _state_selector() -> selector.SelectSelector:
     """Return a selector for the semantic state of an input."""
     return selector.SelectSelector(
@@ -83,11 +92,11 @@ def _slot_schema(
 
     if require_entity:
         entity_field = vol.Required(
-            CONF_ENTITY_ID, default=values.get(CONF_ENTITY_ID, "")
+            CONF_ENTITY_ID, **({"default": values[CONF_ENTITY_ID]} if values.get(CONF_ENTITY_ID) else {})
         )
     else:
         entity_field = vol.Optional(
-            CONF_ENTITY_ID, default=values.get(CONF_ENTITY_ID, "")
+            CONF_ENTITY_ID, **({"default": values[CONF_ENTITY_ID]} if values.get(CONF_ENTITY_ID) else {})
         )
 
     priority_field = vol.Optional(CONF_PRIORITY)
@@ -218,19 +227,14 @@ class MachineMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             entity_ids = [user_input.get(slot) for slot in INPUT_SLOTS]
-            missing = [
-                slot
-                for slot, entity_id in zip(INPUT_SLOTS, entity_ids)
-                if not entity_id
-            ]
-            for slot in missing:
-                errors[slot] = "entity_required"
+            if not any(entity_ids):
+                errors["base"] = "entity_required"
             for slot, entity_id in zip(INPUT_SLOTS, entity_ids):
                 if entity_id and is_own_source(self.hass, entity_id):
                     errors[slot] = "own_entity"
             if not errors:
                 await self.async_set_unique_id(
-                    "machine:" + "|".join(sorted(entity_ids))
+                    "machine:" + "|".join(sorted(e for e in entity_ids if e))
                 )
                 self._abort_if_unique_id_configured()
                 name = (user_input.get(CONF_NAME) or "").strip() or DEFAULT_NAME
@@ -240,7 +244,7 @@ class MachineMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_NAME: name,
                         **{
                             slot: user_input[slot]
-                            for slot in INPUT_SLOTS
+                            for slot in INPUT_SLOTS if user_input.get(slot)
                         },
                     },
                     options={
@@ -255,7 +259,7 @@ class MachineMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                 CONF_INCLUDE_IN_STATISTICS: True,
                                 CONF_PRIORITY: None,
                             }
-                            for slot in INPUT_SLOTS
+                            for slot in INPUT_SLOTS if user_input.get(slot)
                         },
                     },
                 )
@@ -264,7 +268,7 @@ class MachineMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             {
                 vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
                 **{
-                    vol.Required(slot): _binary_sensor_selector(self.hass)
+                    vol.Optional(slot): _binary_sensor_selector(self.hass)
                     for slot in INPUT_SLOTS
                 },
             }
@@ -284,26 +288,13 @@ class MachineMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            missing = [
-                slot
-                for slot in INPUT_SLOTS
-                if not user_input.get(slot)
-            ]
-            for slot in missing:
-                errors[slot] = "entity_required"
+            if not any(user_input.get(slot) for slot in INPUT_SLOTS):
+                errors["base"] = "entity_required"
             for slot in INPUT_SLOTS:
                 if user_input.get(slot) and is_own_source(self.hass, user_input[slot]):
                     errors[slot] = "own_entity"
             if errors:
-                schema = vol.Schema(
-                    {
-                        vol.Optional(CONF_NAME, default=entry.title): str,
-                        **{
-                            vol.Required(slot): _binary_sensor_selector(self.hass)
-                            for slot in INPUT_SLOTS
-                        },
-                    }
-                )
+                schema = _binding_schema(entry.title, user_input, self.hass)
                 return self.async_show_form(
                     step_id="reconfigure",
                     data_schema=schema,
@@ -312,7 +303,7 @@ class MachineMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
 
             data = dict(entry.data)
-            data.update({slot: user_input[slot] for slot in INPUT_SLOTS})
+            data.update({slot: user_input.get(slot, "") for slot in INPUT_SLOTS})
             data[CONF_NAME] = (
                 (user_input.get(CONF_NAME) or "").strip() or entry.title
             )
@@ -320,7 +311,14 @@ class MachineMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if coordinator is not None:
                 profile = await coordinator.async_profile_for(entry)
                 for slot in INPUT_SLOTS:
-                    profile.inputs[slot].entity_id = user_input[slot]
+                    entity_id = user_input.get(slot)
+                    if entity_id:
+                        cfg = profile.inputs.get(slot) or InputConfig(entity_id=entity_id)
+                        cfg.entity_id = entity_id
+                        profile.inputs[slot] = cfg
+                    else:
+                        profile.inputs.pop(slot, None)
+                profile.row_order = normalize_row_order(profile.row_order, profile.inputs)
                 profile.name = data[CONF_NAME]
                 await coordinator.async_update_profile(entry.entry_id, profile)
             if hasattr(self, "async_update_reload_and_abort"):
@@ -338,15 +336,12 @@ class MachineMonitorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             return self.async_abort(reason="reconfigure_successful")
 
-        schema = vol.Schema(
-            {
-                vol.Optional(CONF_NAME, default=entry.title): str,
-                **{
-                    vol.Required(slot): _binary_sensor_selector(self.hass)
-                    for slot in INPUT_SLOTS
-                },
-            }
-        )
+        sources = dict(entry.data)
+        coordinator = self.hass.data.get(DOMAIN, {}).get("coordinator")
+        if coordinator is not None:
+            profile = await coordinator.async_profile_for(entry)
+            sources = {slot: cfg.entity_id for slot, cfg in profile.inputs.items()}
+        schema = _binding_schema(entry.title, sources, self.hass)
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=schema,
@@ -386,7 +381,7 @@ class MachineMonitorOptionsFlow(config_entries.OptionsFlow):
         """HA forms support scalar selectors, so edit each input separately."""
         profile = await self._async_current_profile()
         return self.async_show_menu(
-            step_id="init", menu_options=["machine", *profile.inputs],
+            step_id="init", menu_options=["machine", *INPUT_SLOTS],
             description_placeholders={"name": profile.name},
         )
 
@@ -426,7 +421,7 @@ class MachineMonitorOptionsFlow(config_entries.OptionsFlow):
 
     async def _async_step_input(self, slot, user_input=None):
         profile = await self._async_current_profile()
-        cfg = profile.input_for(slot)
+        cfg = profile.input_for(slot) or InputConfig(entity_id="")
         errors = {}
         if user_input is not None:
             entity_id = user_input.get(CONF_ENTITY_ID, cfg.entity_id)

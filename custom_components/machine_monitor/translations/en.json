@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Add Machine",
-        "description": "Bind the four physical inputs of an ESP32 node to existing Home Assistant binary sensors. The meaning of every input is configured later in the machine profile.",
+        "description": "Select one to four source binary sensors. Leave unused inputs empty. Configure input meanings in the machine profile.",
         "data": {
           "name": "Machine name",
           "input_1": "Input 1",
@@ -22,7 +22,7 @@
       },
       "reconfigure": {
         "title": "Reconfigure machine",
-        "description": "Change the source entities of {name}.",
+        "description": "Change sources for {name}. Leave unused inputs empty; at least one source is required.",
         "data": {
           "name": "Machine name",
           "input_1": "Input 1",
@@ -33,7 +33,7 @@
       }
     },
     "error": {
-      "entity_required": "Select an entity",
+      "entity_required": "Select at least one source entity",
       "own_entity": "Select an original MQTT/device binary sensor. Machine Monitor diagnostic entities cannot be used as sources."
     },
     "abort": {

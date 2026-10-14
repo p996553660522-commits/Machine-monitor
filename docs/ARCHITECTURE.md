@@ -55,3 +55,11 @@ Source state changes emit integration update events. The frontend coalesces burs
 Frontend module URLs use a content hash to invalidate cached resources. Language preference is browser-local; names from Machine Profile and source IDs are preserved.
 
 Persistent data belongs to Home Assistant `.storage` and is not part of this repository. See root `AGENTS.md` for the complete engineering specification.
+
+## Acquisition enable metadata (1.3.0 / firmware 1.2)
+
+A profile may bind one to four sources. Missing slots are omitted, never filled with fake OFF values. ESP32 retains four stable MQTT discovery identities, with per-line availability and a retained JSON `acquisition_enabled` attribute. Disabled acquisition yields an unavailable source entity; it does not publish fabricated OFF measurements. Existing sources without the optional attribute remain enabled for compatibility.
+
+Effective observation permission is `InputConfig.enabled AND acquisition_enabled`. The persistent profile retains the user's own permission and canonical name. The event engine evaluates source attributes from each delivered HA state event (including attribute-only changes), closes physical ON intervals when permission disappears, and resumes only on a valid ON event. Only effectively enabled sources affect priority and the machine availability decision. Disabling every source gives OFFLINE/no_enabled_inputs.
+
+The API exposes profile_enabled, acquisition_enabled and effective enabled separately. Historical intervals and statistics remain stored; toggles affect future acquisition, not historical facts. Existing filters can reveal a disabled input's past activity. No storage schema change, source-specific MQTT subscription, control output, or semantic engine in firmware is introduced.

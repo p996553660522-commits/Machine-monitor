@@ -29,6 +29,9 @@ const char* INPUT_NAMES[4] = {
 
 const unsigned long DEBOUNCE_MS = 50;
 
+// NVS defaults preserve existing four-channel devices.
+bool inputEnabled[4] = {true, true, true, true};
+
 // -------------------------
 // NETWORK
 // -------------------------
@@ -205,6 +208,10 @@ void loadSettings()
     ""
   );
 
+  for (uint8_t i = 0; i < 4; i++)
+  {
+    inputEnabled[i] = preferences.getBool(("input" + String(i + 1)).c_str(), true);
+  }
   preferences.end();
 
   hostname = sanitizeHostname(deviceName);
@@ -225,6 +232,11 @@ void saveSettings(
   preferences.putString("wifi_pass", newWifiPassword);
   preferences.putString("mqtt_user", newMQTTUser);
   preferences.putString("mqtt_pass", newMQTTPassword);
+  for (uint8_t i = 0; i < 4; i++)
+  {
+    inputEnabled[i] = server.hasArg("input" + String(i + 1));
+    preferences.putBool(("input" + String(i + 1)).c_str(), inputEnabled[i]);
+  }
 
   preferences.end();
 }
@@ -529,6 +541,16 @@ String mqttAvailabilityTopic()
   return mqttBaseTopic() + "/availability";
 }
 
+String mqttInputAvailabilityTopic(uint8_t channel)
+{
+  return mqttBaseTopic() + "/availability/input" + String(channel + 1);
+}
+
+String mqttInputConfigTopic(uint8_t channel)
+{
+  return mqttBaseTopic() + "/config/input" + String(channel + 1);
+}
+
 String mqttDiscoveryTopic(uint8_t channel)
 {
   return "homeassistant/binary_sensor/" +
@@ -566,8 +588,13 @@ void publishDiscovery(uint8_t channel)
   payload += mqttStateTopic(channel);
   payload += "\",";
 
-  payload += "\"availability_topic\":\"";
+  payload += "\"availability\":[{\"topic\":\"";
   payload += mqttAvailabilityTopic();
+  payload += "\"},{\"topic\":\"";
+  payload += mqttInputAvailabilityTopic(channel);
+  payload += "\"}],\"availability_mode\":\"all\",";
+  payload += "\"json_attributes_topic\":\"";
+  payload += mqttInputConfigTopic(channel);
   payload += "\",";
 
   payload += "\"payload_on\":\"ON\",";
@@ -585,9 +612,12 @@ void publishDiscovery(uint8_t channel)
   payload += deviceName;
   payload += "\",";
 
+  payload += "\"configuration_url\":\"http://";
+  payload += hostname;
+  payload += ".local/\",";
   payload += "\"manufacturer\":\"DIY\",";
   payload += "\"model\":\"ESP32 Machine Monitor\",";
-  payload += "\"sw_version\":\"1.1\"";
+  payload += "\"sw_version\":\"1.2\"";
 
   payload += "}";
 
@@ -617,6 +647,7 @@ void publishAllDiscovery()
 
 void publishInputState(uint8_t channel)
 {
+  if (!inputEnabled[channel]) return;
   const char* state =
     stableState[channel]
       ? "ON"
@@ -634,6 +665,27 @@ void publishInputState(uint8_t channel)
   Serial.print(INPUT_NAMES[channel]);
   Serial.print(" = ");
   Serial.println(state);
+}
+
+// Keep stable discovery IDs for disabled lines; unavailable is not OFF.
+// Gate availability while publishing fresh state, avoiding retained stale ON.
+void publishInputConfiguration()
+{
+  for (uint8_t i = 0; i < 4; i++)
+  {
+    mqttClient.publish(mqttInputAvailabilityTopic(i).c_str(), "offline", true);
+    mqttClient.publish(mqttInputConfigTopic(i).c_str(),
+      inputEnabled[i] ? "{\"acquisition_enabled\":true}" : "{\"acquisition_enabled\":false}", true);
+  }
+}
+
+void publishInputAvailability()
+{
+  for (uint8_t i = 0; i < 4; i++)
+  {
+    mqttClient.publish(mqttInputAvailabilityTopic(i).c_str(),
+      inputEnabled[i] ? "online" : "offline", true);
+  }
 }
 
 void publishAllStates()
@@ -713,7 +765,9 @@ void mqttCallback(
       Serial.println("Home Assistant is ONLINE.");
 
       publishAllDiscovery();
+      publishInputConfiguration();
       publishAllStates();
+      publishInputAvailability();
     }
   }
 }
@@ -809,7 +863,7 @@ bool connectMQTT()
 
   mqttClient.publish(
     mqttAvailabilityTopic().c_str(),
-    "online",
+    "offline",
     true
   );
 
@@ -826,7 +880,10 @@ bool connectMQTT()
   // ----------------------------------------------------------
 
   publishAllDiscovery();
+  publishInputConfiguration();
   publishAllStates();
+  publishInputAvailability();
+  mqttClient.publish(mqttAvailabilityTopic().c_str(), "online", true);
 
   return true;
 }
@@ -881,6 +938,8 @@ void initInputs()
       INPUT_PULLUP
     );
 
+    if (!inputEnabled[i]) continue;
+
     // PC817 active = LOW
     rawState[i] =
       digitalRead(INPUT_PINS[i]) == LOW;
@@ -899,6 +958,7 @@ void updateInputs()
 {
   for (uint8_t i = 0; i < 4; i++)
   {
+    if (!inputEnabled[i]) continue;
     bool current =
       digitalRead(INPUT_PINS[i]) == LOW;
 
@@ -963,6 +1023,8 @@ String htmlPage()
   html += ".state{padding:10px;margin:5px 0;background:#eee}";
   html += ".on{background:#cfc}";
   html += ".off{background:#eee}";
+  html += "input[type=checkbox]{appearance:none;position:relative;width:44px;height:26px;padding:0;margin:0 12px 0 0;border-radius:15px;background:#9ca6b0;cursor:pointer;flex-shrink:0}input[type=checkbox]:checked{background:#167dcb}input[type=checkbox]:before{content:\"\";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:white;transition:left .15s}input[type=checkbox]:checked:before{left:21px}input[type=checkbox]:focus-visible{outline:3px solid #102f65;outline-offset:3px}";
+  html += ".line-toggle{display:flex;align-items:center;padding:12px;background:#f2f5f8;margin:8px 0;border-radius:8px}";
 
   html += "</style>";
 
@@ -998,9 +1060,7 @@ String htmlPage()
     html += INPUT_NAMES[i];
     html += ": <b>";
 
-    html += stableState[i]
-      ? "ON"
-      : "OFF";
+    html += !inputEnabled[i] ? "DISABLED / Отключён" : stableState[i] ? "ON" : "OFF";
 
     html += "</b></div>";
   }
@@ -1010,6 +1070,21 @@ String htmlPage()
   html += "<h2>Wi-Fi / MQTT</h2>";
 
   html += "<form method='POST' action='/save'>";
+  html += "<h2>Signal lines / Сигнальные линии</h2>";
+  html += "<p>Отключите неиспользуемые входы. Настройка сохраняется после перезагрузки. История в HA остаётся.</p>";
+  for (uint8_t i = 0; i < 4; i++)
+  {
+    html += "<label class='line-toggle'><input type='checkbox' role='switch' name='input";
+    html += String(i + 1);
+    html += "'";
+    if (inputEnabled[i]) html += " checked";
+    html += ">";
+    html += INPUT_NAMES[i];
+    html += " — GPIO";
+    html += String(INPUT_PINS[i]);
+    html += "</label>";
+  }
+
 
   html += "<label>Device name</label>";
   html += "<input name='name' value='";
@@ -1164,6 +1239,13 @@ void setupWebServer()
         "</body></html>"
       );
 
+      // Explicitly close observations before intentional restart (no LWT on clean disconnect).
+      if (mqttClient.connected())
+      {
+        mqttClient.publish(mqttAvailabilityTopic().c_str(), "offline", true);
+        publishInputConfiguration();
+        mqttClient.disconnect();
+      }
       delay(2000);
 
       ESP.restart();

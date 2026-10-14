@@ -159,6 +159,7 @@
   "PHYSICAL INPUTS": "ФИЗИЧЕСКИЕ ВХОДЫ",
   "No inputs configured.": "Входы не настроены.",
   "UNKNOWN": "НЕИЗВЕСТНО",
+  "Disabled": "Отключён",
   "ON": "ВКЛ",
   "OFF": "ВЫКЛ",
   " act.": " включ.",
@@ -1561,7 +1562,7 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
         line.appendChild(el("div", null, t("Semantic: ") + semanticLabel(source.semantic_state) +
           " | HA: " + (source.ha_state == null ? t("missing") : source.ha_state) +
           t(" | Available: ") + (source.available ? t("yes") : t("no")) +
-          t(" | Physical: ") + (source.physical_on == null ? t("UNKNOWN") : source.physical_on ? t("ON") : t("OFF")) +
+          t(" | Physical: ") + (source.enabled === false ? t("Disabled") : source.physical_on == null ? t("UNKNOWN") : source.physical_on ? t("ON") : t("OFF")) +
           t(" | Enabled: ") + (source.enabled ? t("yes") : t("no")) +
           t(" | Real Flow in profile: ") + (source.show_in_timeline === false ? t("hidden") : t("visible"))));
         line.appendChild(el("div", null, t("Last state change: ") +
@@ -1601,7 +1602,7 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
           fontWeight: "700",
           background: r.on ? r.color + "33" : "var(--divider-color)",
           color: r.on ? r.color : "var(--secondary-text-color)" },
-          r.available === false || r.on == null ? t("UNKNOWN") : (r.on ? t("ON") : t("OFF")));
+          r.enabled === false ? t("Disabled") : r.available === false || r.on == null ? t("UNKNOWN") : (r.on ? t("ON") : t("OFF")));
         row.appendChild(on);
         row.appendChild(el("div", {
           fontFamily: "monospace", color: "var(--secondary-text-color)",

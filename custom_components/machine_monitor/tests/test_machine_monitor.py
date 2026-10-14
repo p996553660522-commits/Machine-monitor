@@ -172,6 +172,137 @@ class RegressionTests(unittest.IsolatedAsyncioTestCase):
         self.engine._async_on_state_change(event)
     def durations(self, slot):
         return [i.duration_seconds(Clock.value) for i in self.history.input_intervals(slot)]
+    def acquisition_edge(self, entity, state, second, enabled):
+        Clock.value=T+timedelta(seconds=second)
+        obj=types.SimpleNamespace(state=state, attributes={'acquisition_enabled':enabled})
+        self.hass.values[entity]=obj
+        self.engine._async_on_state_change(types.SimpleNamespace(
+            data={'entity_id':entity,'new_state':obj},time_fired=Clock.value))
+
+    async def test_acquisition_disable_on_closes_history_and_preserves_statistics(self):
+        self.edge('binary_sensor.b','on',10)
+        self.acquisition_edge('binary_sensor.b','on',20,False)  # attributes-only
+        self.assertEqual(self.engine.state,'idle')
+        self.assertEqual(self.durations('input_2'),[10])
+        self.assertIsNone(self.engine.async_snapshot().active_inputs['input_2'])
+        self.acquisition_edge('binary_sensor.b','unavailable',30,False)
+        self.assertEqual(self.engine.state,'idle')
+        self.assertIsNone(self.engine.offline_reason()['code'])
+        row=self.runtime.input_timeline(T,Clock.value)['rows'][1]
+        self.assertFalse(row['enabled'])
+        self.assertFalse(row['acquisition_enabled'])
+        self.assertEqual(row['on_seconds'],10)
+        self.assertTrue(self.profile.inputs['input_2'].enabled)
+        self.acquisition_edge('binary_sensor.b','unavailable',40,True)
+        self.assertEqual(self.engine.state,'offline')
+        self.acquisition_edge('binary_sensor.b','on',50,True)
+        self.acquisition_edge('binary_sensor.b','off',60,True)
+        self.assertEqual(self.durations('input_2'),[10,10])
+        st=self.runtime.stats(start=T,end=Clock.value)
+        self.assertEqual((st.work_seconds,st.idle_seconds,st.offline_seconds),(20,30,10))
+
+    async def test_disabled_fourth_source_at_startup_does_not_make_three_input_machine_offline(self):
+        await self.engine.async_stop()
+        for i in (3,4):self.profile.inputs[f'input_{i}']=models.InputConfig(f'binary_sensor.i{i}')
+        self.hass.values['binary_sensor.i3']=types.SimpleNamespace(state='off')
+        self.hass.values['binary_sensor.i4']=types.SimpleNamespace(state='unavailable',attributes={'acquisition_enabled':False})
+        await self.engine.async_start(load_history=False)
+        self.assertEqual(self.engine.state,'idle')
+        self.assertTrue(self.engine.async_snapshot().inputs_available)
+        self.assertEqual(self.history.input_intervals('input_4'),[])
+        self.edge('binary_sensor.a','on',10)
+        self.edge('binary_sensor.b','on',20)
+        self.assertEqual(self.engine.state,'work')
+        self.assertEqual(self.durations('input_1'),[10])
+        self.assertEqual(self.durations('input_2'),[0])
+        self.edge('binary_sensor.a','unavailable',30)
+        self.assertEqual(self.engine.state,'offline')
+        self.assertEqual([r['slot'] for r in self.engine.offline_reason()['sources']],['input_1'])
+
+    async def test_all_acquisition_disabled_is_unknown_not_idle(self):
+        self.acquisition_edge('binary_sensor.a','off',10,False)
+        self.acquisition_edge('binary_sensor.b','off',20,False)
+        self.assertEqual(self.engine.state,'offline')
+        self.assertEqual(self.engine.offline_reason()['code'],'no_enabled_inputs')
+        self.assertFalse(self.engine.async_snapshot().inputs_available)
+
+    async def test_acquisition_disabled_off_reenable_off_creates_no_activity(self):
+        self.acquisition_edge('binary_sensor.a','off',10,False)
+        self.acquisition_edge('binary_sensor.a','unavailable',20,False)
+        self.acquisition_edge('binary_sensor.a','off',30,True)
+        self.assertEqual(self.history.input_intervals('input_1'),[])
+        self.assertEqual(self.engine.state,'idle')
+
+    async def test_add_machine_with_three_or_one_optional_sources(self):
+        for count in (1,3):
+            flow=flow_mod.MachineMonitorConfigFlow();flow.hass=self.hass
+            async def unique(value):flow.unique=value
+            flow.async_set_unique_id=unique
+            flow._abort_if_unique_id_configured=lambda:None
+            sources={f'input_{i}':f'binary_sensor.i{i}' for i in range(1,count+1)}
+            result=await flow.async_step_user(sources)
+            self.assertEqual(len(result['options']['inputs']),count)
+            self.assertNotIn('input_4',result['data'])
+            profile=machine.build_profile_from_entry_data('new',result['title'],result['data'])
+            self.assertEqual(len(profile.inputs),count)
+        self.assertEqual((await flow.async_step_user({}))['errors'],{'base':'entity_required'})
+
+    async def test_reconfigure_adds_missing_optional_input_preserving_profile(self):
+        coordinator=coordinator_mod.MachineMonitorCoordinator(self.hass)
+        await coordinator.async_update_profile('m',self.profile)
+        self.hass.data['machine_monitor']={'coordinator':coordinator}
+        entry=types.SimpleNamespace(entry_id='m',title='Test',data={'input_1':'binary_sensor.a','input_2':'binary_sensor.b'})
+        flow=flow_mod.MachineMonitorConfigFlow();flow.hass=self.hass
+        flow._get_reconfigure_entry=lambda:entry
+        flow.async_update_reload_and_abort=lambda entry,**kw:kw
+        await flow.async_step_reconfigure({'input_1':'binary_sensor.a','input_2':'binary_sensor.b','input_3':'binary_sensor.c'})
+        profile=await coordinator.async_profile_for(entry)
+        self.assertEqual(list(profile.inputs),['input_1','input_2','input_3'])
+        self.assertEqual(profile.inputs['input_2'].semantic_state,'work')
+        await flow.async_step_reconfigure({'input_1':'binary_sensor.a','input_3':'binary_sensor.c'})
+        self.assertEqual(list((await coordinator.async_profile_for(entry)).inputs),['input_1','input_3'])
+
+    async def test_acquisition_disable_live_event_and_reload_keep_history(self):
+        updates=[];self.engine.set_update_callback(lambda:updates.append(True))
+        self.edge('binary_sensor.b','on',10)
+        self.acquisition_edge('binary_sensor.b','on',20,False)
+        self.assertEqual(len(updates),2)
+        self.assertFalse(self.hass.events[-1][1]['acquisition_enabled'])
+        self.assertIsNone(self.hass.events[-1][1]['on'])
+        await self.engine.async_stop()
+        Clock.value=T+timedelta(seconds=30)
+        await self.engine.async_start()
+        self.assertEqual(self.engine.state,'idle')
+        self.assertEqual(self.durations('input_2'),[10])
+        self.assertFalse(self.runtime.dashboard_payload(T,Clock.value)['input_timeline']['rows'][1]['enabled'])
+        self.assertTrue(self.profile.inputs['input_2'].enabled)
+
+    async def test_manual_profile_disabled_is_not_overridden_by_esp(self):
+        profile=copy.deepcopy(self.profile);profile.inputs['input_2'].enabled=False
+        await self.runtime.async_apply_profile(profile)
+        self.acquisition_edge('binary_sensor.b','on',10,True)
+        self.assertEqual(self.engine.state,'idle')
+        self.assertEqual(self.history.input_intervals('input_2'),[])
+        self.assertFalse(self.engine.source_diagnostics()[1]['enabled'])
+
+    async def test_optional_slot_editor_and_empty_reconfigure_keep_all_selectors(self):
+        coordinator=coordinator_mod.MachineMonitorCoordinator(self.hass)
+        await coordinator.async_update_profile('m',self.profile)
+        self.hass.data['machine_monitor']={'coordinator':coordinator}
+        entry=types.SimpleNamespace(entry_id='m',title='Test',data={})
+        options=flow_mod.MachineMonitorOptionsFlow(entry);options.hass=self.hass
+        self.assertIn('input_4',(await options.async_step_init())['menu_options'])
+        form=await options.async_step_input_4()
+        field=next(k for k in form['data_schema'].schema if k.key=='entity_id')
+        self.assertIsNone(field.default)
+        await options.async_step_input_4({'entity_id':'binary_sensor.d'})
+        self.assertEqual((await coordinator.async_profile_for(entry)).inputs['input_4'].entity_id,'binary_sensor.d')
+        flow=flow_mod.MachineMonitorConfigFlow();flow.hass=self.hass;flow._get_reconfigure_entry=lambda:entry
+        form=await flow.async_step_reconfigure({})
+        self.assertEqual([k.key for k in form['data_schema'].schema],['name','input_1','input_2','input_3','input_4'])
+        form=await flow.async_step_reconfigure()
+        self.assertEqual(next(k.default for k in form['data_schema'].schema if k.key=='input_1'),'binary_sensor.a')
+
     async def test_concurrency_priority_and_off_edge(self):
         self.edge('binary_sensor.a','on',10)
         self.edge('binary_sensor.b','on',20)

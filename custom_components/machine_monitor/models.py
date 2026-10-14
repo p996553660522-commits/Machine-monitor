@@ -318,6 +318,12 @@ class ActiveInput:
     raw_state: str | None = None
     last_changed: datetime | None = None
     source_error: str | None = None
+    acquisition_enabled: bool = True
+
+    @property
+    def enabled(self) -> bool:
+        """Both profile and acquisition device must allow observation."""
+        return self.config.enabled and self.acquisition_enabled
 
     @property
     def semantic_state(self) -> str:

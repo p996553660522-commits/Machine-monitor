@@ -46,6 +46,11 @@ def _is_truthy(state: str | None) -> bool:
     return state == "on"
 
 
+def _acquisition_enabled(state) -> bool:
+    """Optional source metadata; existing entities remain enabled."""
+    return getattr(state, "attributes", {}).get("acquisition_enabled") is not False
+
+
 class EventEngine:
     """Track one machine and maintain both of its timelines."""
 
@@ -92,12 +97,12 @@ class EventEngine:
         self.history.async_record_observation_gap(now)
         self._read_entity_states()
         self._evaluate(initial=True, now=now)
-        if any(a.is_available and a.config.enabled for a in self._inputs.values()):
+        if any(a.is_available and a.enabled for a in self._inputs.values()):
             self._last_seen = now
 
         # Only confirmed states open fresh intervals after an unknown gap.
         for slot, active in self._inputs.items():
-            if self.profile.enabled and active.config.enabled and active.is_on and active.is_available:
+            if self.profile.enabled and active.enabled and active.is_on and active.is_available:
                 self.history.async_open_input_interval(slot, now)
                 _LOGGER.debug("Machine %s input %s source %s physical interval opened at startup %s",
                               self.machine_id, slot, active.entity_id, now.isoformat())
@@ -166,7 +171,7 @@ class EventEngine:
         now = datetime.now().astimezone()
         self._evaluate(initial=True, now=now)
         for slot, active in self._inputs.items():
-            if self.profile.enabled and active.config.enabled and active.is_available and active.is_on:
+            if self.profile.enabled and active.enabled and active.is_available and active.is_on:
                 self.history.async_open_input_interval(slot, now)
         self.history.mark_observed(now)
         self.history.last_seen = self._last_seen
@@ -194,6 +199,7 @@ class EventEngine:
                 raw_state=raw_state,
                 last_changed=getattr(state, "last_changed", None),
                 source_error=source_error,
+                acquisition_enabled=_acquisition_enabled(state),
             )
             _LOGGER.debug("Machine %s input %s source %s initial HA state=%s available=%s on=%s error=%s",
                           self.machine_id, slot, cfg.entity_id, raw_state, available,
@@ -216,6 +222,9 @@ class EventEngine:
             source_error = "own_entity" if is_own_source(self.hass, entity_id) else None
             available = new_state in ("on", "off") and source_error is None
             was_available, was_on = active.is_available, active.is_on
+            was_enabled = active.enabled
+            old_acquisition = active.acquisition_enabled
+            active.acquisition_enabled = _acquisition_enabled(state_obj)
             old_raw, old_error = active.raw_state, active.source_error
             active.raw_state = new_state
             active.source_error = source_error
@@ -224,21 +233,23 @@ class EventEngine:
             )
             active.is_on = _is_truthy(new_state) and available
             active.is_available = available
-            if (available or was_available) and active.config.enabled:
+            if (available or was_available) and (active.enabled or was_enabled):
                 self._last_seen = now
-            if (was_on, was_available, old_raw, old_error) == (active.is_on, available, new_state, source_error):
+            if (was_on, was_available, old_raw, old_error, old_acquisition) == (active.is_on, available, new_state, source_error, active.acquisition_enabled):
                 continue
             _LOGGER.debug("Machine %s input %s source %s HA state=%s available=%s on=%s previous=(%s,%s,%s) error=%s",
                           self.machine_id, slot, entity_id, new_state, available, active.is_on,
                           old_raw, was_available, was_on, source_error)
-            changed_inputs.append({"input": slot, "on": active.is_on if available else None, "available": available})
-            if self.profile.enabled and active.config.enabled:
-                if not available or not active.is_on:
+            changed_inputs.append({"input": slot, "on": active.is_on if available and active.enabled else None,
+                                   "available": available and active.enabled,
+                                   "enabled": active.enabled, "acquisition_enabled": active.acquisition_enabled})
+            if self.profile.enabled:
+                if not active.enabled or not available or not active.is_on:
                     closed = self.history.async_close_input_interval(slot, now)
                     if closed:
                         _LOGGER.debug("Machine %s input %s source %s physical interval closed at %s",
                                       self.machine_id, slot, entity_id, now.isoformat())
-                elif not was_available or not was_on:
+                elif not was_enabled or not was_available or not was_on:
                     self.history.async_open_input_interval(slot, now)
                     _LOGGER.debug("Machine %s input %s source %s physical interval opened at %s",
                                   self.machine_id, slot, entity_id, now.isoformat())
@@ -263,7 +274,7 @@ class EventEngine:
         """Resolve the semantic machine state and update its timeline."""
         now = now or datetime.now().astimezone()
         considered = [
-            item for item in self._inputs.values() if item.config.enabled
+            item for item in self._inputs.values() if item.enabled
         ]
 
         if not self.profile.enabled or not considered or not all(
@@ -406,14 +417,20 @@ class EventEngine:
         end = now or datetime.now().astimezone()
         return max(0.0, (end - self._state_since).total_seconds())
 
+    def acquisition_enabled(self, slot: str) -> bool:
+        """Expose acquisition settings without changing the persistent profile."""
+        active = self._inputs.get(slot)
+        return active.acquisition_enabled if active else True
+
     def source_diagnostics(self) -> list[dict[str, Any]]:
         """Event-consistent raw sources; absence and unknown never mean OFF."""
         return [{
             "slot": slot, "entity_id": a.entity_id, "name": a.config.display_name,
-            "semantic_state": a.semantic_state, "enabled": a.config.enabled,
+            "semantic_state": a.semantic_state, "enabled": a.enabled,
+            "profile_enabled": a.config.enabled, "acquisition_enabled": a.acquisition_enabled,
             "show_in_timeline": a.config.show_in_timeline,
             "ha_state": a.raw_state, "available": a.is_available,
-            "physical_on": a.is_on if a.is_available else None,
+            "physical_on": a.is_on if a.is_available and a.enabled else None,
             "last_changed": a.last_changed.isoformat() if a.last_changed else None,
             "source_error": a.source_error,
         } for slot, a in self._inputs.items()]
@@ -424,7 +441,7 @@ class EventEngine:
                        if row["enabled"] and not row["available"]]
         if not self.profile.enabled:
             code = "monitoring_disabled"
-        elif not any(a.config.enabled for a in self._inputs.values()):
+        elif not any(a.enabled for a in self._inputs.values()):
             code = "no_enabled_inputs"
         elif unavailable:
             code = "unavailable_sources"
@@ -443,12 +460,12 @@ class EventEngine:
             source_entity=self._source_entity,
             priority=self._priority,
             active_inputs={
-                slot: item.is_on if item.is_available else None
+                slot: item.is_on if item.is_available and item.enabled else None
                 for slot, item in self._inputs.items()
             },
             inputs_available=self.profile.enabled and any(
-                item.config.enabled for item in self._inputs.values()
-            ) and all(item.is_available for item in self._inputs.values() if item.config.enabled),
+                item.enabled for item in self._inputs.values()
+            ) and all(item.is_available for item in self._inputs.values() if item.enabled),
             last_seen=self._last_seen,
             offline_since=self._offline_since,
             recovered_at=self._recovered_at,

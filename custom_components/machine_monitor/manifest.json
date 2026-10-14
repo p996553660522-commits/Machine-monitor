@@ -1,7 +1,7 @@
 {
   "domain": "machine_monitor",
   "name": "Machine Monitor",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "documentation": "https://github.com/p996553660522-commits/Machine-monitor",
   "issue_tracker": "https://github.com/p996553660522-commits/Machine-monitor/issues",
   "requirements": [],

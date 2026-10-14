@@ -186,7 +186,10 @@ class MachineInputBinarySensor(
             attributes.update({"source_ha_state": diagnostics.get("ha_state"),
                                "source_available": diagnostics.get("available"),
                                "source_last_changed": diagnostics.get("last_changed"),
-                               "source_error": diagnostics.get("source_error")})
+                               "source_error": diagnostics.get("source_error"),
+                               "profile_enabled": cfg.enabled if cfg else False,
+                               "acquisition_enabled": diagnostics.get("acquisition_enabled", True),
+                               "enabled": diagnostics.get("enabled", False)})
             snapshot = runtime.snapshot()
             attributes[ATTR_STATE] = snapshot.state
             attributes["is_current_state_source"] = (
