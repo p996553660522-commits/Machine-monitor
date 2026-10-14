@@ -50,7 +50,7 @@ def validate_catalog(data):
 
 
 def snapshot(commit):
-    payload = subprocess.check_output(["git", "archive", "--format=zip", commit], cwd=ROOT)
+    payload = subprocess.check_output(["git", "-c", "core.autocrlf=false", "-c", "core.eol=lf", "archive", "--format=zip", commit], cwd=ROOT)
     with zipfile.ZipFile(io.BytesIO(payload)) as archive:
         files = {info.filename: archive.read(info) for info in archive.infolist() if not info.is_dir()}
     for name in files:

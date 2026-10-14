@@ -41,6 +41,13 @@ class ReleaseTests(unittest.TestCase):
                 digest, name = line.split("  ")
                 self.assertEqual(digest, hashlib.sha256((directory / name).read_bytes()).hexdigest())
 
+    def test_snapshot_ignores_checkout_newline_settings(self):
+        payload = r.zip_bytes({'README.md':b'line\n'})
+        with patch.object(r.subprocess,'check_output',return_value=payload) as command:
+            self.assertEqual(r.snapshot('a'*40),{'README.md':b'line\n'})
+            self.assertIn('core.autocrlf=false',command.call_args.args[0])
+            self.assertIn('core.eol=lf',command.call_args.args[0])
+
     def test_packages_are_reproducible(self):
         with tempfile.TemporaryDirectory() as tmp:
             a = r.build(self.item, self.files, Path(tmp) / "a", b'Notes')
