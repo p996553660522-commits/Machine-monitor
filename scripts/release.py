@@ -184,7 +184,7 @@ def build(item, files, out, notes):
             if {i.filename: archive.read(i) for i in archive.infolist()} != contents:
                 raise ValueError("Package round-trip mismatch")
         checksums.append(hashlib.sha256(payload).hexdigest() + "  " + name)
-    (release_dir / "SHA256SUMS.txt").write_text("\n".join(checksums) + "\n", encoding="utf-8")
+    (release_dir / "SHA256SUMS.txt").write_text("\n".join(checksums) + "\n", encoding="utf-8", newline="\n")
     (release_dir / "release.json").write_bytes(metadata)
     (release_dir / "INSTALL_RU.md").write_bytes(installation(item))
     (release_dir / "RELEASE_NOTES.md").write_bytes(notes)

@@ -37,6 +37,7 @@ class ReleaseTests(unittest.TestCase):
                 self.assertEqual(json.loads(archive.read("release.json"))["commit"], self.item["commit"])
             with zipfile.ZipFile(directory / "machine-monitor-source-v1.4.0.zip") as archive:
                 self.assertFalse(any(".env" in n or ".storage" in n or "secrets" in n for n in archive.namelist()))
+            self.assertNotIn(b"\r\n", (directory / "SHA256SUMS.txt").read_bytes())
             for line in (directory / "SHA256SUMS.txt").read_text().splitlines():
                 digest, name = line.split("  ")
                 self.assertEqual(digest, hashlib.sha256((directory / name).read_bytes()).hexdigest())
