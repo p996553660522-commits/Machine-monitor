@@ -80,6 +80,8 @@ class EventEngine:
         self._dirty: bool = False
         self._running = False
         self._on_update: Callable[[], None] | None = None
+        self._semantic_metadata = (None, None, None)
+        self._rule_id = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -88,6 +90,7 @@ class EventEngine:
         """Load both timelines from storage and start listening."""
         if load_history:
             await self.history.async_load()
+            await self.history.async_pin_legacy_accounting(self.profile)
         self._last_seen = self.history.last_seen
         self.history.set_retention(self.profile.retention_days)
 
@@ -150,6 +153,7 @@ class EventEngine:
         self.profile = profile
         for slot, active in self._inputs.items():
             active.config = profile.inputs[slot]
+        self._evaluate()
         self.hass.bus.async_fire(EVENT_MACHINE_STATE_CHANGED, {
             "machine_id": self.machine_id, "type": "profile",
         })
@@ -270,9 +274,16 @@ class EventEngine:
     # ------------------------------------------------------------------
     # Semantic state resolution
     # ------------------------------------------------------------------
+    def _rule_matches(self, rule):
+        def matches(term):
+            active = self._inputs.get(term["input"])
+            return active is not None and active.enabled and active.is_available and active.is_on == (term["state"] == "on")
+        return any(all(matches(term) for term in group) for group in rule["conditions"])
+
     def _evaluate(self, initial: bool = False, now: datetime | None = None) -> None:
         """Resolve the semantic machine state and update its timeline."""
         now = now or datetime.now().astimezone()
+        rule = None
         considered = [
             item for item in self._inputs.values() if item.enabled
         ]
@@ -290,7 +301,14 @@ class EventEngine:
                 for item in considered
                 if item.is_available and item.is_on
             ]
-            if available_active:
+            enabled_rules = [r for r in self.profile.rules if r["enabled"]]
+            matching = [r for r in enabled_rules if self._rule_matches(r)]
+            if enabled_rules:
+                rule = max(matching, key=lambda r:(r["priority"],r["id"])) if matching else None
+                new_state = rule["state"] if rule else self.profile.no_active_state
+                source_input = source_entity = None
+                priority = rule["priority"] if rule else -1
+            elif available_active:
                 winner = max(
                     available_active,
                     key=lambda item: (
@@ -308,13 +326,30 @@ class EventEngine:
                 source_entity = None
                 priority = -1
 
-        if not initial and (new_state, source_input, source_entity, priority) == (
+        cfg = self.profile.input_for(source_input or "")
+        label = rule["name"] if rule else cfg.display_name if cfg and cfg.display_name != "Input" else None
+        accounting = rule["accounting"] if rule else cfg.accounting if cfg else "auto"
+        if new_state == STATE_OFFLINE:
+            accounting = "excluded"
+        elif accounting == "auto":
+            accounting = "productive" if new_state == "work" else "non_productive"
+        included = new_state != STATE_OFFLINE and accounting != "excluded" and (cfg.include_in_statistics if cfg else True)
+        metadata = (label, accounting, included)
+        rule_id = rule["id"] if rule else None
+        if not initial and rule_id == self._rule_id and metadata[1:] == self._semantic_metadata[1:] and (new_state, source_input, source_entity, priority) == (
             self._state, self._source_input, self._source_entity, self._priority
         ):
+            if label != self._semantic_metadata[0]:
+                self._semantic_metadata = metadata
+                if self.history.intervals and self.history.intervals[-1].is_open:
+                    self.history.intervals[-1].input_label = label
+                    self.history.mark_observed(now)
             return
         _LOGGER.debug("Machine %s semantic %s -> %s initial=%s offline_reason=%s",
                       self.machine_id, self._state, new_state, initial, self.offline_reason())
-        state_changed = new_state != self._state
+        state_changed = (new_state, rule_id) != (self._state, self._rule_id)
+        self._semantic_metadata = metadata
+        self._rule_id = rule_id
 
         if initial:
             self._state = new_state
@@ -333,6 +368,7 @@ class EventEngine:
                     state=new_state,
                     source_input=source_input,
                     source_entity=source_entity,
+                    input_label=label, accounting=accounting, included=included, rule_id=rule_id,
                 )
                 self._dirty = True
             return
@@ -346,6 +382,7 @@ class EventEngine:
                 state=new_state,
                 source_input=source_input,
                 source_entity=source_entity,
+                input_label=label, accounting=accounting, included=included, rule_id=rule_id,
             )
 
         self._state = new_state
@@ -469,6 +506,8 @@ class EventEngine:
             last_seen=self._last_seen,
             offline_since=self._offline_since,
             recovered_at=self._recovered_at,
+            custom_label=self._semantic_metadata[0],
+            rule_id=self._rule_id,
         )
 
     # -- physical input layer ------------------------------------------
@@ -522,6 +561,7 @@ class EventEngine:
                     "state": item.state,
                     "input": item.source_input,
                     "input_name": cfg.display_name if cfg else None,
+                    "custom_label": item.input_label,
                     "entity": item.source_entity,
                     "icon": cfg.effective_icon if cfg else None,
                     "color": cfg.effective_color if cfg else None,

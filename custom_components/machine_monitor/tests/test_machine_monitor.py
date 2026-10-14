@@ -81,7 +81,7 @@ module('homeassistant.helpers.typing', ConfigType=dict)
 module('homeassistant.helpers.device_registry', DeviceEntry=object)
 module('homeassistant.helpers.entity_registry', async_get=lambda hass:hass.entity_registry, EVENT_ENTITY_REGISTRY_UPDATED='entity_registry_updated')
 module('homeassistant.helpers.entity_platform', AddEntitiesCallback=object)
-module('homeassistant.helpers.selector', EntitySelector=Selector, EntitySelectorConfig=Selector, SelectSelector=Selector, SelectSelectorConfig=Selector, SelectSelectorMode=types.SimpleNamespace(DROPDOWN='dropdown',LIST='list'), TextSelector=Selector, IconSelector=Selector, ColorSelector=Selector)
+module('homeassistant.helpers.selector', EntitySelector=Selector, EntitySelectorConfig=Selector, SelectSelector=Selector, SelectSelectorConfig=Selector, SelectSelectorMode=types.SimpleNamespace(DROPDOWN='dropdown',LIST='list'), TextSelector=Selector, IconSelector=Selector, ColorRGBSelector=Selector)
 module('homeassistant.components')
 module('homeassistant.components.websocket_api', websocket_command=lambda schema:lambda f:f, async_response=lambda f:f, ActiveConnection=object)
 module('homeassistant.components.sensor', SensorEntity=object, SensorEntityDescription=object, SensorDeviceClass=types.SimpleNamespace(TIMESTAMP='timestamp'), SensorStateClass=types.SimpleNamespace(MEASUREMENT='measurement',TOTAL_INCREASING='total_increasing'))
@@ -499,7 +499,7 @@ class RegressionTests(unittest.IsolatedAsyncioTestCase):
         await restored.async_load()
         self.assertEqual(restored.input_intervals('input_1')[0].duration_seconds(),20)
         self.assertTrue(restored.input_intervals('input_2')[0].is_open)
-        self.assertEqual(Store.data['machine_monitor.m']['history_schema_version'],3)
+        self.assertEqual(Store.data['machine_monitor.m']['history_schema_version'],4)
 
     async def test_last_seen_persists_while_sources_offline(self):
         self.edge('binary_sensor.a','unavailable',10)
@@ -540,6 +540,7 @@ class RegressionTests(unittest.IsolatedAsyncioTestCase):
         self.edge('binary_sensor.b','on',10)
         Clock.value=T+timedelta(seconds=20)
         profile=copy.deepcopy(self.profile)
+        profile.history_limit += 1
         async def fail(payload):raise OSError('test write failure')
         with patch.object(self.history._store,'async_save',fail):
             with self.assertLogs('machine_monitor.storage',level='ERROR'):

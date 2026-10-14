@@ -2,13 +2,16 @@
 
 Equipment monitoring with **ESP32 → MQTT → Home Assistant**. The device observes four physical signals; the integration keeps independent input history, resolves semantic machine states and presents a reusable monitoring dashboard.
 
-**Integration:** 1.3.0 · **Firmware:** Arduino sketch 1.2.1 (per-input enable switches) · **Interface:** Русский / English
+**Integration:** 1.4.0 · **Firmware:** Arduino sketch 1.2.1 (per-input enable switches) · **Interface:** Русский / English
 
 ## Возможности
 
 - Real Flow: независимые физические входы на общей шкале времени, одновременные сигналы, фильтры, порядок строк, масштаб и навигация.
 - Текущее состояние машины, длительность, доступность и последняя связь.
-- Отдельная semantic history с настраиваемыми приоритетами, статистика и события.
+- Универсальные режимы с произвольными именами, приоритетами и условиями И/ИЛИ над физическими входами.
+- Независимый учёт режима: продуктивный, непродуктивный или исключённый; изменения не пересчитывают прошлое.
+- Real Flow: переключение точной истории и группировки разрывов меньше 10 секунд; исходные данные сохраняются.
+- Отдельная semantic history, статистика и события.
 - OFFLINE как неизвестная активность: интервалы включения разрываются при потере достоверных данных.
 - Отчёты по периодам A/B, сравнение и смены, включая смены через полночь.
 - Постоянная история и настраиваемый срок хранения: 7–365 дней, по умолчанию 30.

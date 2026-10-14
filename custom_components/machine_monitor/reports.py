@@ -4,7 +4,7 @@ from bisect import bisect_left
 from zoneinfo import ZoneInfo
 
 from .const import SEMANTIC_STATES, WORK_STATES
-from .stats import compute_period_stats, input_statistics
+from .stats import compute_period_stats, input_statistics, interval_included, interval_productive
 from .storage import HistoryStore
 
 
@@ -22,7 +22,7 @@ def period_report(profile, semantic, physical, start, end, now):
     durations = {state: stats.seconds_for(state) for state in SEMANTIC_STATES if state != "offline"}
     runs = []
     for iv in entries:
-        if iv.state not in WORK_STATES or not includes.get(iv.source_input, True):
+        if not interval_productive(iv) or not interval_included(iv, includes):
             continue
         begin, finish = max(start, iv.start), min(end, iv.end or now)
         if finish <= begin:
@@ -32,11 +32,11 @@ def period_report(profile, semantic, physical, start, end, now):
         else:
             index = bisect_left(semantic, iv.start, key=lambda item: item.start)
             previous = semantic[index - 1] if index else None
-            continuation = previous is not None and previous.end == iv.start and previous.state in WORK_STATES and includes.get(previous.source_input, True)
+            continuation = previous is not None and previous.end == iv.start and interval_productive(previous) and interval_included(previous, includes)
             runs.append([begin, finish, iv.start >= start and not continuation])
     idle_runs = []
     for iv in entries:
-        if iv.state != "idle" or not includes.get(iv.source_input, True):
+        if iv.state != "idle" or interval_productive(iv) or not interval_included(iv, includes):
             continue
         begin, finish = max(start, iv.start), min(end, iv.end or now)
         if finish <= begin:
@@ -52,10 +52,10 @@ def period_report(profile, semantic, physical, start, end, now):
             "known_seconds": known, "included_known_seconds": denominator,
             "offline_seconds": stats.offline_seconds,
             "unrecorded_seconds": max(0, total - known - stats.offline_seconds),
-            "work_seconds": stats.work_seconds, "idle_seconds": durations.get("idle", 0),
+            "work_seconds": stats.work_seconds, "idle_seconds": sum((r[1]-r[0]).total_seconds() for r in idle_runs),
             "non_productive_seconds": stats.idle_seconds, "states": durations,
             "work_percent": round(stats.work_seconds / denominator * 100, 2) if denominator else 0,
-            "idle_percent": round(durations.get("idle", 0) / denominator * 100, 2) if denominator else 0,
+            "idle_percent": round(sum((r[1]-r[0]).total_seconds() for r in idle_runs) / denominator * 100, 2) if denominator else 0,
             "offline_percent": round(stats.offline_seconds / total * 100, 2),
             "percentage_basis": "included_known_time; offline percentage uses total period",
             "work_cycles": sum(bool(run[2]) for run in runs),

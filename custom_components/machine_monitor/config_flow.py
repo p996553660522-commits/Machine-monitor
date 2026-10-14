@@ -12,6 +12,8 @@ physical signal to a machine meaning is defined.
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
+from uuid import uuid4
 from typing import Any
 
 import voluptuous as vol
@@ -48,7 +50,7 @@ from .const import (
     SEMANTIC_STATES,
     STATE_OTHER,
 )
-from .models import InputConfig, MachineProfile, normalize_row_order, normalize_color, validate_shifts
+from .models import InputConfig, MachineProfile, normalize_row_order, normalize_color, validate_shifts, validate_mode_rules
 from .source_validation import is_own_source, own_source_entities
 
 _LOGGER = logging.getLogger(__name__)
@@ -127,9 +129,13 @@ def _slot_schema(
             CONF_SEMANTIC_STATE,
             default=values.get(CONF_SEMANTIC_STATE, STATE_OTHER),
         ): _state_selector(),
+        vol.Optional("accounting", default=values.get("accounting", "auto")): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=["auto", "productive", "non_productive", "excluded"],
+                                          mode=selector.SelectSelectorMode.DROPDOWN,
+                                          translation_key="accounting")),
         priority_field: vol.Coerce(int),
         icon_field: selector.IconSelector(),
-        color_field: selector.ColorSelector(),
+        color_field: selector.ColorRGBSelector(),
         vol.Optional(CONF_ENABLED, default=values.get(CONF_ENABLED, True)): bool,
         vol.Optional(
             CONF_SHOW_IN_TIMELINE,
@@ -381,9 +387,87 @@ class MachineMonitorOptionsFlow(config_entries.OptionsFlow):
         """HA forms support scalar selectors, so edit each input separately."""
         profile = await self._async_current_profile()
         return self.async_show_menu(
-            step_id="init", menu_options=["machine", *INPUT_SLOTS],
+            step_id="init", menu_options=["machine", "rules", *INPUT_SLOTS],
             description_placeholders={"name": profile.name},
         )
+
+    async def async_step_rules(self, user_input=None):
+        """Graphical editor: one mode, with an OR of AND groups."""
+        profile = await self._async_current_profile()
+        errors = {}
+        if user_input is not None:
+            selected = user_input.get("mode", "new")
+            existing = next((r for r in profile.rules if r["id"] == selected), None)
+            if selected != "new" and existing is None:
+                errors["base"] = "invalid_rule"
+            elif user_input.get("delete", False) and existing:
+                profile.rules = [r for r in profile.rules if r["id"] != selected]
+                await self._async_save_profile(profile)
+                return self.async_create_entry(data={})
+            elif len(profile.rules) >= 32 and existing is None:
+                errors["base"] = "invalid_rule"
+            else:
+                self._draft_rule = deepcopy(existing) if existing else {
+                    "id": "mode_" + uuid4().hex[:12], "name": "", "state": STATE_OTHER,
+                    "priority": 100, "enabled": True, "accounting": "auto", "conditions": []}
+                return await self.async_step_mode()
+        choices = [{"value":"new","label":"+"}] + [{"value":r["id"],"label":r["name"]} for r in profile.rules]
+        return self.async_show_form(step_id="rules", errors=errors, data_schema=vol.Schema({
+            vol.Required("mode", default="new"): selector.SelectSelector(selector.SelectSelectorConfig(options=choices, mode=selector.SelectSelectorMode.DROPDOWN)),
+            vol.Optional("delete", default=False): bool,
+        }), description_placeholders={"name": profile.name})
+
+    async def async_step_mode(self, user_input=None):
+        errors = {}
+        if user_input is not None:
+            values = {**self._draft_rule, **user_input}
+            if not str(values.get("name", "")).strip():
+                errors["base"] = "invalid_rule"
+            else:
+                self._draft_rule = values
+                self._group_index = 0
+                self._edited_groups = []
+                return await self.async_step_conditions()
+        rule = self._draft_rule
+        return self.async_show_form(step_id="mode", errors=errors, data_schema=vol.Schema({
+            vol.Required("name", default=rule["name"]): str,
+            vol.Required("state", default=rule["state"]): _state_selector(),
+            vol.Optional("priority", default=rule["priority"]): vol.Coerce(int),
+            vol.Optional("enabled", default=rule["enabled"]): bool,
+            vol.Optional("accounting", default=rule["accounting"]): selector.SelectSelector(selector.SelectSelectorConfig(
+                options=["auto","productive","non_productive","excluded"], translation_key="accounting", mode=selector.SelectSelectorMode.DROPDOWN)),
+        }))
+
+    async def async_step_conditions(self, user_input=None):
+        profile = await self._async_current_profile()
+        errors = {}
+        if user_input is not None:
+            group = [{"input":slot,"state":user_input[slot]} for slot in profile.inputs if user_input.get(slot) in ("on","off")]
+            if not group or self._group_index >= 16:
+                errors["base"] = "invalid_rule"
+            else:
+                self._edited_groups.append(group)
+                self._group_index += 1
+                if user_input.get("another_group", False) and self._group_index < 16:
+                    return await self.async_step_conditions()
+                # Finishing replaces old groups, allowing an operator to remove them.
+                rule = {**self._draft_rule, "conditions": self._edited_groups}
+                try:
+                    rules = [r for r in profile.rules if r["id"] != rule["id"]] + [rule]
+                    profile.rules = validate_mode_rules(rules)
+                except (ValueError, TypeError, KeyError):
+                    errors["base"] = "invalid_rule"
+                else:
+                    await self._async_save_profile(profile)
+                    return self.async_create_entry(data={})
+        original = self._draft_rule["conditions"]
+        defaults = {term["input"]:term["state"] for term in original[self._group_index]} if self._group_index < len(original) else {}
+        fields = {vol.Optional(slot, default=defaults.get(slot,"ignore")): selector.SelectSelector(
+            selector.SelectSelectorConfig(options=["ignore","on","off"], translation_key="condition_state", mode=selector.SelectSelectorMode.DROPDOWN)) for slot in profile.inputs}
+        fields[vol.Optional("another_group", default=self._group_index + 1 < len(original))] = bool
+        return self.async_show_form(step_id="conditions", errors=errors, data_schema=vol.Schema(fields),
+                                    description_placeholders={"mode":self._draft_rule["name"],"group":str(self._group_index+1),
+                                        "inputs": "; ".join(f"{slot}: {cfg.display_name}" for slot, cfg in profile.inputs.items())})
 
     async def async_step_machine(self, user_input=None):
         profile = await self._async_current_profile()

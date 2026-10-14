@@ -78,7 +78,7 @@ class V6Tests(unittest.IsolatedAsyncioTestCase):
         t.Store.data[self.history._store.key] = payload
         loaded = t.storage.HistoryStore(self.hass, "m")
         await loaded.async_load(); await loaded.async_flush()
-        self.assertEqual(t.Store.data[loaded._store.key]["history_schema_version"], 3)
+        self.assertEqual(t.Store.data[loaded._store.key]["history_schema_version"], 4)
         again = t.storage.HistoryStore(self.hass, "m"); await again.async_load()
         self.assertEqual(again.intervals[0].to_dict(), old.to_dict())
         self.assertEqual(again.input_intervals("input_2")[0].to_dict(), old.to_dict())

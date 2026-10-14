@@ -160,6 +160,12 @@
   "No inputs configured.": "Входы не настроены.",
   "UNKNOWN": "НЕИЗВЕСТНО",
   "Disabled": "Отключён",
+  "Exact history": "Точная история",
+  "Group gaps < 10 s": "Объединять разрывы < 10 с",
+  "Grouped signals": "Сгруппировано сигналов",
+  "Actual ON time": "Фактическое время ВКЛ",
+  "Gaps": "Разрывы",
+  "Unavailable in gaps": "Нет связи внутри разрывов",
   "ON": "ВКЛ",
   "OFF": "ВЫКЛ",
   " act.": " включ.",
@@ -333,8 +339,8 @@
   };
 
   var EVENT_SORT = {
-    newest: function (a, b) { return String(b.start).localeCompare(String(a.start)); },
-    oldest: function (a, b) { return String(a.start).localeCompare(String(b.start)); },
+    newest: function (a, b) { return Date.parse(b.start) - Date.parse(a.start); },
+    oldest: function (a, b) { return Date.parse(a.start) - Date.parse(b.start); },
     longest: function (a, b) { return (b.duration || 0) - (a.duration || 0); },
     shortest: function (a, b) { return (a.duration || 0) - (b.duration || 0); }
   };
@@ -476,6 +482,9 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
       this._zoom = 1;
       this._panMs = 0;
       this._detail = null;
+      this._groupCache = new WeakMap();
+      this._groupShort = true;
+      try { this._groupShort = window.localStorage.getItem("machine_monitor.flow_grouping") !== "exact"; } catch (_) {}
       this._states = [];
       this._error = null;
       this._loading = true;
@@ -931,7 +940,7 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
       var head=named(el("div"),"mm-tile-head");head.appendChild(el("strong",null,m.name));head.appendChild(el("span",{color:"var(--mm-muted)",fontSize:"20px"},"↗"));row.appendChild(head);
       if(m.description)row.appendChild(named(el("div",null,m.description),"mm-subtle"));
       var state=named(el("div"),"mm-tile-state"),pill=named(el("span",{color:m.state_color||"inherit"}),"mm-pill");
-      pill.appendChild(named(el("span"),"mm-dot"));pill.appendChild(el("span",null,m.offline?t("Offline"):semanticLabel(m.state,m.state_label)));state.appendChild(pill);
+      pill.appendChild(named(el("span"),"mm-dot"));pill.appendChild(el("span",null,m.offline?t("Offline"):(m.custom_label || semanticLabel(m.state,m.state_label))));state.appendChild(pill);
       state.appendChild(named(el("span",null,m.offline?t("Last seen ")+fmtClock(m.last_seen):fmtDuration(m.state_duration)),"mm-subtle"));row.appendChild(state);
       var stats=named(el("div"),"mm-tile-stats");
       [[t("Work"),fmtDuration(m.work_seconds)],[t("Non-work"),fmtDuration(m.idle_seconds)],[t("Work share"),Number(m.work_percent||0).toFixed(1)+"%"]].forEach(item=>{
@@ -1015,7 +1024,7 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
       var stateLabel = el("span", {
         fontSize: "22px", fontWeight: "700",
         color: s.state_color || "inherit" },
-        semanticLabel(s.state,s.state_label));
+        (s.custom_label || semanticLabel(s.state,s.state_label)));
       stateLabel.className = "mm-status-name"; line.appendChild(stateLabel);
       line.className = "mm-status-line";
 
@@ -1136,6 +1145,65 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
       return box;
     }
 
+    _displayIntervals(row, d) {
+      var raw = row.intervals || [];
+      if (!this._groupShort) return raw;
+      var offline = d.offline_periods || [];
+      var cached = this._groupCache.get(row);
+      if (cached && cached.raw === raw && cached.offline === offline) return cached.groups;
+      var groups = [], current = null, offlineIndex = 0;
+      raw.forEach(function (iv) {
+        var begin = Date.parse(iv.start), end = iv.end == null && iv.open ? Date.now() : Date.parse(iv.end);
+        if (!Number.isFinite(begin) || !Number.isFinite(end) || end <= begin) return;
+        var gap = current ? begin - current._endMs : Infinity;
+        if (!current || gap < 0 || gap >= 10000) {
+          current = Object.assign({}, iv, { _startMs: begin, _endMs: end,
+            group_count: 1, gaps: [], gap_seconds: 0, offline_seconds: 0,
+            on_seconds: (end - begin) / 1000 });
+          groups.push(current);
+        } else {
+          if (gap > 0) {
+            var a = current._endMs, b = begin;
+            current.gaps.push([a,b]);current.gap_seconds += gap / 1000;
+            while (offlineIndex < offline.length && Date.parse(offline[offlineIndex].end) <= a) offlineIndex++;
+            for (var j = offlineIndex; j < offline.length; j++) {
+              var op = offline[j], opStart = Date.parse(op.start), opEnd = Date.parse(op.end);
+              if (opStart >= b) break;
+              current.offline_seconds += Math.max(0, Math.min(b,opEnd) - Math.max(a,opStart)) / 1000;
+            }
+          }
+          current.group_count++;current.on_seconds += (end - begin) / 1000;
+          current.end = iv.end;current.open = iv.open;current._endMs = end;
+          current.duration = (end - current._startMs) / 1000;
+        }
+      });
+      this._groupCache.set(row, {raw:raw,offline:offline,groups:groups});
+      return groups;
+    }
+
+    _groupBackground(iv, color, clipped) {
+      if (!iv.gaps || !iv.gaps.length) return color;
+      // Bound style size for dense bursts; a hatched aggregate is not a precise ON claim.
+      if (iv.gaps.length > 64) return "repeating-linear-gradient(90deg," + color + "99 0 3px,transparent 3px 5px)";
+      var begin = clipped ? clipped.start : iv._startMs, end = clipped ? clipped.end : iv._endMs;
+      var span = end - begin, stops = [color + " 0%"];
+      iv.gaps.forEach(function (gap) {
+        if (gap[1] <= begin || gap[0] >= end) return;
+        var a = (Math.max(gap[0],begin)-begin)/span*100, b = (Math.min(gap[1],end)-begin)/span*100;
+        stops.push(color+" "+a+"%", "transparent "+a+"%", "transparent "+b+"%", color+" "+b+"%");
+      });
+      stops.push(color+" 100%");
+      return "linear-gradient(90deg," + stops.join(",") + ")";
+    }
+
+    _groupTooltip(iv) {
+      if (!(iv.group_count > 1)) return "";
+      return "\n" + t("Grouped signals") + ": " + iv.group_count +
+        "\n" + t("Actual ON time") + ": " + fmtDuration(iv.on_seconds) +
+        "\n" + t("Gaps") + ": " + fmtDuration(iv.gap_seconds) +
+        "\n" + t("Unavailable in gaps") + ": " + fmtDuration(iv.offline_seconds);
+    }
+
     _renderRealFlow(d) {
       var data = d.input_timeline || { rows: [] };
       var rowsAll = data.rows || [];
@@ -1160,6 +1228,16 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
         toolbar.appendChild(b);
       });
 
+      [[false,"Exact history"],[true,"Group gaps < 10 s"]].forEach(function(option) {
+        var b = el("button", BTN, t(option[1]));
+        b.setAttribute("aria-pressed",String(self._groupShort === option[0]));
+        b.onclick = function() {
+          self._groupShort = option[0];
+          try { window.localStorage.setItem("machine_monitor.flow_grouping",option[0]?"grouped":"exact"); } catch (_) {}
+          self._dirty=true;self._render();
+        };
+        toolbar.appendChild(b);
+      });
       var sortSel = el("select", Object.assign({}, SEL, { width: "auto" }));
       ROW_SORTS.forEach(function (o) {
         var opt = el("option", null, t(o[1]));
@@ -1265,7 +1343,7 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
         var s = Math.max(startMs, range.start.getTime());
         var e = Math.min(endMs, Date.now(), range.end.getTime());
         return e > s ? { left: (s - range.start.getTime()) / range.span * 100,
-                         width: (e - s) / range.span * 100 } : null;
+                         width: (e - s) / range.span * 100, start: s, end: e } : null;
       }
 
       var rowH = 20;
@@ -1281,7 +1359,7 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
         track.className = "mm-flow-track mm-flow-compact";
         addOffline(track);
         rows.forEach(function (r, idx) {
-          (r.intervals || []).forEach(function (iv) {
+          self._displayIntervals(r, d).forEach(function (iv) {
             var clipped = clipInterval(iv);
             if (!clipped) return;
             var leftPct = clipped.left;
@@ -1290,12 +1368,12 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
               position: "absolute", left: leftPct + "%",
               width: widthPct + "%",
               top: (2 + (idx % 4) * 7) + "px", height: "6px",
-              zIndex: "4", background: r.color, borderRadius: "2px", opacity: "0.95" });
+              zIndex: "4", background: self._groupBackground(iv,r.color,clipped), borderRadius: "2px", opacity: "0.95" });
             bar.tabIndex=0;bar.setAttribute("role","button");
             bar._inputColor = r.color;
             bar.title = t("Input: ") + r.name + t("\nState: ON\nStart: ") +
               fmtDateTime(iv.observed_start || iv.start) + t("\nEnd: ") + (iv.open ? t("NOW") : fmtDateTime(iv.end)) +
-              t("\nDuration: ") + fmtDuration(iv.duration);
+              t("\nDuration: ") + fmtDuration(iv.duration) + self._groupTooltip(iv);
             bar.setAttribute("aria-label",bar.title);
             track.appendChild(bar);
           });
@@ -1335,7 +1413,7 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
 
           track2.className = "mm-flow-track";
           addOffline(track2);
-          (r.intervals || []).forEach(function (iv) {
+          self._displayIntervals(r, d).forEach(function (iv) {
             var clipped = clipInterval(iv);
             if (!clipped) return;
             var leftPct = clipped.left;
@@ -1343,12 +1421,12 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
             var bar = el("div", {
               position: "absolute", left: leftPct + "%",
               width: widthPct + "%", top: "1px", bottom: "1px",
-              zIndex: "4", background: r.color, borderRadius: "2px", opacity: "0.9" });
+              zIndex: "4", background: self._groupBackground(iv,r.color,clipped), borderRadius: "2px", opacity: "0.9" });
             bar.tabIndex=0;bar.setAttribute("role","button");
             bar._inputColor = r.color;
             bar.title = t("Input: ") + r.name + t("\nState: ON\nStart: ") +
               fmtDateTime(iv.observed_start || iv.start) + t("\nEnd: ") + (iv.open ? t("NOW") : fmtDateTime(iv.end)) +
-              t("\nDuration: ") + fmtDuration(iv.duration);
+              t("\nDuration: ") + fmtDuration(iv.duration) + self._groupTooltip(iv);
             bar.setAttribute("aria-label",bar.title);
             track2.appendChild(bar);
           });
@@ -1674,7 +1752,7 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
         state.appendChild(el("span", {
           width: "8px", height: "8px", borderRadius: "2px",
           background: ev.color, display: "inline-block" }));
-        state.appendChild(el("span", null, semanticLabel(ev.state,ev.state_label)));
+        state.appendChild(el("span", null, (ev.custom_label || semanticLabel(ev.state,ev.state_label))));
         row.appendChild(state);
         if (ev.input_name) {
           row.appendChild(el("div", {

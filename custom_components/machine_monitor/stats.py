@@ -244,6 +244,22 @@ def _first(states: tuple[str, ...]) -> str:
     return states[0] if states else STATE_OTHER
 
 
+def interval_included(item, include_inputs=None):
+    if item.state == "offline" or item.accounting == "excluded":
+        return False
+    if item.included is not None:
+        return item.included
+    return include_inputs is None or include_inputs.get(item.source_input, True)
+
+
+def interval_productive(item):
+    if item.state == "offline":
+        return False
+    if item.accounting is not None:
+        return item.accounting == "productive"
+    return item.state in WORK_STATES
+
+
 def compute_period_stats(
     intervals: Iterable[Interval],
     start: datetime,
@@ -276,7 +292,7 @@ def compute_period_stats(
             buckets[item.state] = buckets.get(item.state, 0.0) + seconds
             stats.offline_seconds += seconds
             continue
-        if include_inputs is not None and not include_inputs.get(item.source_input, True):
+        if not interval_included(item, include_inputs):
             continue
         if include_states is not None and not include_states.get(
             item.state, True
@@ -284,7 +300,7 @@ def compute_period_stats(
             continue
         buckets[item.state] = buckets.get(item.state, 0.0) + seconds
         stats.monitored_seconds += seconds
-        if item.state in WORK_STATES:
+        if interval_productive(item):
             stats.work_seconds += seconds
         else:
             stats.idle_seconds += seconds
@@ -326,8 +342,8 @@ def analyse_downtime(
 
     candidates: list[tuple[datetime, datetime, str | None]] = []
     for item, _seconds in clip_intervals(intervals, start, end):
-        if item.state in target and item.state not in EXCLUDED_STATES:
-            if include_inputs is not None and not include_inputs.get(item.source_input, True):
+        if item.state in target and item.state not in EXCLUDED_STATES and not interval_productive(item):
+            if not interval_included(item, include_inputs):
                 continue
             candidates.append((max(item.start, start), min(item.end or datetime.now().astimezone(), end), item.source_input))
 

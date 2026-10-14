@@ -21,501 +21,619 @@ from bisect import bisect_left, bisect_right
 from pathlib import Path
 from typing import Any
 
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.storage import Store
+from homeassis…13670 tokens truncated…edge('binary_sensor.b','on',10)
+        self.edge('binary_sensor.b','unavailable',20)
+        self.assertEqual(self.engine.state,'offline')
+        self.assertIsNone(self.engine.async_snapshot().active_inputs['input_2'])
+        self.edge('binary_sensor.b','on',40)
+        self.edge('binary_sensor.b','off',50)
+        self.assertEqual(self.durations('input_2'),[10,10])
+        periods=self.runtime.offline_periods(T,Clock.value)
+        self.assertEqual(periods[0]['duration'],20)
+        st=self.runtime.stats(start=T,end=Clock.value)
+        self.assertEqual((st.work_seconds,st.idle_seconds,st.offline_seconds),(20,10,20))
+        self.assertEqual(st.work_percent,66.7)
+        self.assertEqual(st.offline_percent,40)
+        self.assertTrue(any(x['state']=='offline' for x in self.runtime.timeline(T,Clock.value)))
+    async def test_off_unavailable_recover_off(self):
+        self.edge('binary_sensor.a','unknown',10)
+        self.edge('binary_sensor.a','off',20)
+        self.assertEqual(self.history.input_intervals('input_1'),[])
+        self.assertEqual(self.runtime.offline_periods(T,Clock.value)[0]['duration'],10)
+    async def test_queued_events_do_not_reread_future_state(self):
+        self.hass.values['binary_sensor.a']=types.SimpleNamespace(state='off')
+        self.hass.values['binary_sensor.b']=types.SimpleNamespace(state='on')
+        self.edge('binary_sensor.a','on',10,update=False)
+        self.assertEqual(self.engine.state,'heating')
+        self.edge('binary_sensor.a','off',20,update=False)
+        self.edge('binary_sensor.b','on',30,update=False)
+        self.assertEqual(self.durations('input_1'),[10])
+        self.assertEqual(len(self.history.input_intervals('input_2')),1)
+    async def test_one_entity_in_two_slots(self):
+        profile=copy.deepcopy(self.profile)
+        profile.inputs['input_2'].entity_id='binary_sensor.a'
+        await self.runtime.async_apply_profile(profile)
+        self.edge('binary_sensor.a','on',10)
+        self.assertTrue(all(self.history.input_intervals(s)[-1].is_open for s in profile.inputs))
+    async def test_same_semantic_winner_change_tracks_source(self):
+        profile=copy.deepcopy(self.profile)
+        profile.inputs['input_1'].semantic_state='work'
+        await self.runtime.async_apply_profile(profile)
+        self.edge('binary_sensor.a','on',10)
+        since=self.engine.state_since
+        self.edge('binary_sensor.b','on',20)
+        self.assertEqual(self.engine.async_snapshot().source_input,'input_2')
+        self.assertEqual(self.engine.state_since,since)
+        self.assertEqual(self.history.intervals[-2].end,T+timedelta(seconds=20))
+    async def test_profile_rebinding_updates_listener(self):
+        self.edge('binary_sensor.a','on',10)
+        profile=copy.deepcopy(self.profile)
+        profile.inputs['input_1'].entity_id='binary_sensor.c'
+        self.hass.values['binary_sensor.c']=types.SimpleNamespace(state='off')
+        Clock.value=T+timedelta(seconds=20)
+        await self.runtime.async_apply_profile(profile)
+        self.assertEqual(len(self.hass.listeners),1)
+        self.assertIn('binary_sensor.c',self.hass.listeners[0][0])
+        self.assertEqual(self.durations('input_1'),[10])
+        self.edge('binary_sensor.c','on',30)
+        self.assertEqual(len(self.history.input_intervals('input_1')),2)
+    async def test_disabled_input_does_not_affect_history_or_offline(self):
+        profile=copy.deepcopy(self.profile)
+        profile.inputs['input_1'].enabled=False
+        await self.runtime.async_apply_profile(profile)
+        self.edge('binary_sensor.a','on',10)
+        self.edge('binary_sensor.a','unavailable',20)
+        self.assertEqual(self.history.input_intervals('input_1'),[])
+        self.assertEqual(self.engine.state,'idle')
+    async def test_clean_restart_preserves_full_duration_and_gap(self):
+        self.edge('binary_sensor.b','on',10)
+        Clock.value=T+timedelta(hours=2)
+        await self.engine.async_stop()
+        end=Clock.value
+        Clock.value+=timedelta(minutes=30)
+        await self.engine.async_start()
+        entries=self.history.input_intervals('input_2')
+        self.assertEqual(entries[0].end,end)
+        self.assertEqual(entries[1].start,Clock.value)
+        self.assertEqual(entries[0].duration_seconds(),7190)
+    async def test_crash_restart_closes_at_checkpoint(self):
+        self.edge('binary_sensor.b','on',10)
+        Clock.value=T+timedelta(hours=2)
+        await self.engine.async_flush()
+        end=Clock.value
+        Clock.value+=timedelta(hours=1)
+        restored=storage.HistoryStore(self.hass,'m')
+        await restored.async_load()
+        restored.async_repair_open_interval(Clock.value)
+        restored.async_repair_open_input_intervals(Clock.value)
+        self.assertEqual(restored.input_intervals('input_2')[-1].end,end)
+        self.assertEqual(restored.intervals[-1].end,end)
+    async def test_legacy_storage_preserved_without_invented_physical_history(self):
+        Store.data['machine_monitor.old']={'intervals':[models.Interval(T,None,'work').to_dict()]}
+        old=storage.HistoryStore(self.hass,'old')
+        await old.async_load()
+        old.async_repair_open_interval(T+timedelta(hours=1))
+        self.assertEqual(len(old.intervals),1)
+        self.assertEqual(old.intervals[0].end,T)
+        self.assertEqual(old.input_intervals(),{})
+    async def test_clear_history_resumes_observed_on(self):
+        self.edge('binary_sensor.b','on',10)
+        Clock.value=T+timedelta(seconds=20)
+        await self.engine.async_flush()
+        await self.engine.async_clear_history()
+        self.assertEqual(self.history.input_intervals('input_2')[0].start,Clock.value)
+        self.assertEqual(len(Store.data['machine_monitor.m']['intervals']),1)
+    async def test_prune_preserves_open_and_crossing_intervals(self):
+        self.edge('binary_sensor.b','on',10)
+        cutoff=T+timedelta(seconds=20)
+        self.history.async_prune(cutoff)
+        self.assertTrue(self.history.input_intervals('input_2')[-1].is_open)
+        self.edge('binary_sensor.b','off',30)
+        self.history.async_prune(cutoff)
+        self.assertEqual(self.durations('input_2'),[20])
+    async def test_save_failure_remains_dirty_and_retry_succeeds(self):
+        async def fail(payload):raise OSError('test failure')
+        with patch.object(self.history._store,'async_save',fail):
+            with self.assertLogs('machine_monitor.storage',level='ERROR'):
+                self.assertFalse(await self.history.async_flush())
+        self.assertTrue(self.history._dirty)
+        await self.history.async_flush_if_dirty()
+        self.assertFalse(self.history._dirty)
+    async def test_changes_during_save_are_not_lost(self):
+        save=self.history._store.async_save
+        async def during(payload):
+            self.edge('binary_sensor.b','on',10)
+            await save(payload)
+        with patch.object(self.history._store,'async_save',during):
+            await self.history.async_flush()
+        self.assertTrue(self.history._dirty)
+        await self.history.async_flush_if_dirty()
+        self.assertEqual(len(Store.data['machine_monitor.m']['input_intervals']['input_2']),1)
+    async def test_coordinator_callback_schedules_coroutine(self):
+        c=coordinator_mod.MachineMonitorCoordinator(self.hass)
+        c.machines['m']=self.runtime
+        self.engine.set_update_callback(c._schedule_refresh)
+        self.hass.events.clear()
+        self.edge('binary_sensor.a','on',10)
+        await asyncio.gather(*self.hass.tasks)
+        self.assertEqual(c.refreshes,1)
+        self.assertEqual(len(self.hass.events),1)
+    async def test_websocket_import_and_validation_empty_filter(self):
+        c=coordinator_mod.MachineMonitorCoordinator(self.hass)
+        c.machines['m']=self.runtime
+        self.hass.data={'machine_monitor':{'coordinator':c}}
+        self.edge('binary_sensor.b','on',10)
+        conn=Connection()
+        await ws.ws_timeline(self.hass,conn,{'id':1,'machine_id':'m','start':T.isoformat(),'end':Clock.value.isoformat(),'inputs':[]})
+        self.assertEqual(conn.result['input_timeline']['rows'],[])
+        for start,end in [('invalid',Clock.value.isoformat()),('2026-10-05T08:00:00',Clock.value.isoformat()),(Clock.value.isoformat(),T.isoformat())]:
+            await ws.ws_timeline(self.hass,conn,{'id':1,'machine_id':'m','start':start,'end':end})
+            self.assertEqual(conn.error,'invalid_range')
+        await ws.ws_overview(self.hass,conn,{'id':2})
+        self.assertEqual(conn.result['machines'][0]['machine_id'],'m')
+    async def test_restart_gap_is_offline_and_never_work(self):
+        self.edge('binary_sensor.b','on',10)
+        Clock.value=T+timedelta(seconds=20)
+        await self.engine.async_stop()
+        Clock.value=T+timedelta(seconds=40)
+        await self.engine.async_start()
+        st=self.runtime.stats(start=T,end=Clock.value)
+        self.assertEqual(st.work_seconds,10)
+        self.assertEqual(st.offline_seconds,20)
+        self.assertEqual(self.runtime.offline_periods(T,Clock.value)[0]['duration'],20)
 
-from .const import INPUT_ON, STORAGE_KEY_PREFIX, STORAGE_VERSION
-from .models import Interval
+    async def test_load_error_does_not_overwrite_history(self):
+        before=copy.deepcopy(Store.data)
+        async def fail():raise OSError('test read failure')
+        with patch.object(self.history._store, 'async_load', fail):
+            with self.assertLogs('machine_monitor.storage',level='ERROR'):
+                with self.assertRaises(OSError):await self.history.async_load()
+        self.assertEqual(Store.data,before)
 
-_LOGGER = logging.getLogger(__name__)
+    async def test_future_schema_refused_without_data_loss(self):
+        Store.data['machine_monitor.future']={'history_schema_version':99,'intervals':[]}
+        old=storage.HistoryStore(self.hass,'future')
+        with self.assertRaises(ValueError):await old.async_load()
+        self.assertEqual(Store.data['machine_monitor.future']['history_schema_version'],99)
 
+    async def test_closed_physical_storage_roundtrip(self):
+        self.edge('binary_sensor.a','on',10)
+        self.edge('binary_sensor.b','on',20)
+        self.edge('binary_sensor.a','off',30)
+        await self.engine.async_flush()
+        restored=storage.HistoryStore(self.hass,'m')
+        await restored.async_load()
+        self.assertEqual(restored.input_intervals('input_1')[0].duration_seconds(),20)
+        self.assertTrue(restored.input_intervals('input_2')[0].is_open)
+        self.assertEqual(Store.data['machine_monitor.m']['history_schema_version'],4)
 
-class HistoryStore:
-    """Load and persist the timelines of a single machine."""
+    async def test_last_seen_persists_while_sources_offline(self):
+        self.edge('binary_sensor.a','unavailable',10)
+        self.edge('binary_sensor.b','unavailable',20)
+        await self.engine.async_flush()
+        seen=self.engine.last_seen
+        Clock.value=T+timedelta(seconds=40)
+        restored=engine_mod.EventEngine(self.hass,'m',self.profile,storage.HistoryStore(self.hass,'m'))
+        await restored.async_start()
+        self.assertEqual(restored.last_seen,seen)
+        self.assertEqual(seen,T+timedelta(seconds=20))
+        await restored.async_stop()
 
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        machine_id: str,
-        history_limit: int = 5000,
-    ) -> None:
-        """Initialise the store for one machine."""
-        self.hass = hass
-        self.machine_id = machine_id
-        self._history_limit = history_limit
-        self._store: Store[dict[str, Any]] = Store(
-            hass,
-            STORAGE_VERSION,
-            f"{STORAGE_KEY_PREFIX}.{machine_id}",
-            atomic_writes=True, serialize_in_event_loop=False,
-        )
-        self._intervals: list[Interval] = []
-        self._input_intervals: dict[str, list[Interval]] = {}
-        self._save_lock = asyncio.Lock()
-        self._prune_lock = asyncio.Lock()
-        self._dirty = False
-        self._observed_at: datetime | None = None
-        self.last_seen: datetime | None = None
-        self.retention_days = 30
-        self._last_cleanup = None
-        self._last_saved_at = None
-        self._size_bytes = None
-        self._metadata_override = None
+    async def test_invalid_binary_state_is_unknown_not_work(self):
+        self.edge('binary_sensor.b','unexpected',10)
+        self.assertEqual(self.engine.state,'offline')
+        self.assertIsNone(self.runtime.snapshot().active_inputs['input_2'])
+        self.assertEqual(self.history.input_intervals('input_2'),[])
 
-    # ------------------------------------------------------------------
-    # Loading
-    # ------------------------------------------------------------------
-    async def async_load(self) -> list[Interval]:
-        """Load the persisted timelines."""
-        data: dict[str, Any] | None = None
-        try:
-            data = await self._store.async_load()
-        except Exception:  # noqa: BLE001 - storage must never break startup
-            _LOGGER.exception(
-                "Machine Monitor: could not load history for %s",
-                self.machine_id,
-            )
-            raise
+    async def test_binary_entity_uses_updated_profile_source(self):
+        mod=importlib.import_module('machine_monitor.binary_sensor')
+        obj=object.__new__(mod.MachineInputBinarySensor)
+        obj._machine_id='m'; obj._slot='input_1'; obj._entity_id='binary_sensor.a'
+        obj.coordinator=types.SimpleNamespace(runtime_for=lambda id:self.runtime)
+        obj.hass=self.hass
+        profile=copy.deepcopy(self.profile)
+        profile.inputs['input_1'].entity_id='binary_sensor.c'
+        profile.inputs['input_1'].input_name='New input'
+        self.hass.values['binary_sensor.c']=types.SimpleNamespace(state='on')
+        self.hass.values['binary_sensor.a']=types.SimpleNamespace(state='unavailable')
+        await self.runtime.async_apply_profile(profile)
+        self.assertTrue(obj.available)
+        self.assertTrue(obj.is_on)
+        self.assertEqual(obj.name,'New input')
+        self.assertEqual(obj.extra_state_attributes['source_entity'],'binary_sensor.c')
 
-        if (data or {}).get("history_schema_version", 1) > 3:
-            raise ValueError("Unsupported future Machine Monitor history schema")
-        result = await self.hass.async_add_executor_job(self._decode, data)
-        self._size_bytes = await self.hass.async_add_executor_job(self._file_size)
-        return result
+    async def test_profile_update_does_not_reload_stale_disk_after_save_failure(self):
+        self.edge('binary_sensor.b','on',10)
+        Clock.value=T+timedelta(seconds=20)
+        profile=copy.deepcopy(self.profile)
+        profile.history_limit += 1
+        async def fail(payload):raise OSError('test write failure')
+        with patch.object(self.history._store,'async_save',fail):
+            with self.assertLogs('machine_monitor.storage',level='ERROR'):
+                await self.runtime.async_apply_profile(profile)
+        self.assertEqual(self.history.input_intervals('input_2')[0].duration_seconds(),10)
+        self.assertEqual(len(self.history.input_intervals('input_2')),2)
+        self.assertTrue(self.history._dirty)
 
-    def _decode(self, data):
-        """Parse a potentially long history in HA's executor during startup."""
-        seen = (data or {}).get("last_seen")
-        self.last_seen = datetime.fromisoformat(seen) if seen else None
-        observed = (data or {}).get("observed_at")
-        self._observed_at = datetime.fromisoformat(observed) if observed else None
-        intervals: list[Interval] = []
-        for raw in (data or {}).get("intervals", []):
-            try:
-                intervals.append(Interval.from_dict(raw))
-            except (KeyError, TypeError, ValueError):
-                _LOGGER.warning(
-                    "Machine Monitor: skipping malformed interval for %s",
-                    self.machine_id,
-                )
-        intervals.sort(key=lambda item: item.start)
-        self._intervals = intervals
+    async def test_options_input_editor_persists_values(self):
+        f=flow_mod.MachineMonitorOptionsFlow()
+        f.hass=self.hass
+        async def profile():return copy.deepcopy(self.profile)
+        saved=[]
+        async def save(p):saved.append(p)
+        f._async_current_profile=profile
+        f._async_save_profile=save
+        await f.async_step_input_1({'input_name':'Heater','semantic_state':'heating','priority':72,'color':[1,2,3],'show_in_timeline':False,'include_in_statistics':False})
+        cfg=saved[0].inputs['input_1']
+        self.assertEqual((cfg.input_name,cfg.priority,cfg.color),('Heater',72,'#010203'))
+        self.assertFalse(cfg.show_in_timeline)
+        self.assertFalse(cfg.include_in_statistics)
+        await f.async_step_machine({'row_order':'input_2, input_1, input_2, unknown'})
+        self.assertEqual(saved[-1].row_order,['input_2','input_1'])
 
-        # Migration: storage written before the physical input layer does not
-        # contain input_intervals at all. The semantic history is kept as is
-        # and the input history simply starts collecting from now on.
-        raw_inputs: dict[str, Any] = (data or {}).get("input_intervals")
-        if raw_inputs is None:
-            if data:
-                _LOGGER.info(
-                    "Machine Monitor: storage of %s migrated, "
-                    "physical input history starts collecting now",
-                    self.machine_id,
-                )
-            raw_inputs = {}
-
-        input_intervals: dict[str, list[Interval]] = {}
-        for slot, entries in raw_inputs.items():
-            parsed: list[Interval] = []
-            for raw_entry in entries or []:
-                try:
-                    parsed.append(Interval.from_dict(raw_entry))
-                except (KeyError, TypeError, ValueError):
-                    _LOGGER.warning(
-                        "Machine Monitor: skipping malformed input "
-                        "interval %s for %s",
-                        slot,
-                        self.machine_id,
-                    )
-            input_intervals[slot] = sorted(parsed, key=lambda item: item.start)
-        self._input_intervals = input_intervals
-
-        _LOGGER.debug(
-            "Machine Monitor: loaded %s semantic and %s input intervals "
-            "for machine %s",
-            len(self._intervals),
-            sum(len(v) for v in self._input_intervals.values()),
-            self.machine_id,
-        )
-        return self._intervals
-
-    # ------------------------------------------------------------------
-    # Access
-    # ------------------------------------------------------------------
-    @property
-    def intervals(self) -> list[Interval]:
-        """Return the semantic timeline."""
-        return self._intervals
-
-    def input_intervals(self, slot: str | None = None) -> list[Interval] | dict[str, list[Interval]]:
-        """Return the physical input timeline of one slot or of all slots."""
-        if slot is None:
-            return self._input_intervals
-        return self._input_intervals.get(slot, [])
-
-    def input_slots(self) -> list[str]:
-        """Return every slot that has recorded intervals."""
-        return sorted(self._input_intervals)
-
-    def set_history_limit(self, limit: int) -> None:
-        """Update the maximum number of persisted intervals."""
-        self._history_limit = max(10, int(limit))
-        self._trim()
-
-    # ------------------------------------------------------------------
-    # Semantic timeline
-    # ------------------------------------------------------------------
-    def async_repair_open_interval(self, now: datetime) -> Interval | None:
-        """Close a semantic interval left open by a restart.
-
-        Close at the persisted observation checkpoint, never at restart time.
-        Legacy stores without a checkpoint retain the interval but cannot
-        establish its duration beyond its start. The gap stays unknown.
+    async def test_startup_input4_on_through_websocket_and_frontend(self):
+        import json, shutil, subprocess
+        await self.engine.async_stop()
+        self.hass.values={f'binary_sensor.raw{i}':types.SimpleNamespace(
+            state='on' if i==4 else 'off', last_changed=T-timedelta(hours=1)) for i in range(1,5)}
+        self.hass.states=types.SimpleNamespace(get=self.hass.values.get)
+        self.profile=models.MachineProfile('startup', inputs={f'input_{i}':models.InputConfig(
+            f'binary_sensor.raw{i}', input_name=f'Signal {i}', semantic_state='work') for i in range(1,5)})
+        self.history=storage.HistoryStore(self.hass,'startup')
+        self.engine=engine_mod.EventEngine(self.hass,'startup',self.profile,self.history)
+        self.runtime=machine.MachineRuntime('startup',self.profile,self.history,self.engine)
+        updates=[]; self.engine.set_update_callback(lambda:updates.append(True))
+        await self.engine.async_start()
+        self.assertEqual(self.history.input_intervals('input_4')[0].start,T)
+        self.assertTrue(self.history.input_intervals('input_4')[0].is_open)
+        self.assertEqual(self.engine.state,'work')
+        self.assertEqual(updates,[True])
+        self.assertEqual(Store.data['machine_monitor.startup']['input_intervals']['input_4'][0]['end'],None)
+        self.hass.data['machine_monitor']={'coordinator':types.SimpleNamespace(runtime_for=lambda id:self.runtime)}
+        Clock.value=T+timedelta(seconds=120)
+        connection=Connection()
+        await ws.ws_timeline(self.hass,connection,{'id':1,'machine_id':'startup','start':(T-timedelta(hours=1)).isoformat(),
+            'end':(Clock.value-timedelta(milliseconds=125)).isoformat()})
+        rows=connection.result['input_timeline']['rows']
+        self.assertEqual([len(r['intervals']) for r in rows],[0,0,0,1])
+        self.assertTrue(rows[3]['intervals'][0]['open'])
+        self.assertEqual(rows[3]['intervals'][0]['duration'],119.9)
+        # Actual WebSocket payload goes through the real card's active render path.
+        node=shutil.which('node')
+        if node is None:self.fail('Node required for end-to-end frontend verification')
+        script="""const {setup,prepare,walk,flowBox}=require('./tests/frontend_harness.cjs');
+        const fs=require('fs'),assert=require('assert/strict');const {card}=setup();prepare(card);
+        card._selected='startup';card._machines=[{machine_id:'startup',name:'Test'}];
+        card._detail=JSON.parse(fs.readFileSync(0,'utf8'));card._adoptVisibility(card._detail);
+        card._dirty=true;card._render();
+        const bars=walk(flowBox(card)).filter(n=>String(n.title).startsWith('Input:'));
+        assert.equal(bars.length,1);assert.ok(bars[0].title.includes('Signal 4'));
+        assert.ok(parseFloat(bars[0].style.width)>0);assert.ok(bars[0].title.includes('End: NOW'));
         """
-        if not self._intervals:
-            return None
-        last = self._intervals[-1]
-        if not last.is_open:
-            return None
+        result=subprocess.run([node,'-e',script],input=json.dumps(connection.result),text=True,
+                              cwd=ROOT,capture_output=True)
+        self.assertEqual(result.returncode,0,result.stderr)
 
-        last.end = max(last.start, min(self._observed_at or last.start, now))
-        _LOGGER.info(
-            "Machine Monitor: closed interrupted semantic interval "
-            "for %s at %s",
-            self.machine_id,
-            last.end.isoformat(),
-        )
-        self._dirty = True
-        return last
+    async def test_open_interval_clipped_to_now_and_earlier_window(self):
+        self.edge('binary_sensor.b','on',10)
+        Clock.value=T+timedelta(seconds=120)
+        rows=self.runtime.input_timeline(T,T+timedelta(hours=1))['rows']
+        self.assertEqual(datetime.fromisoformat(rows[1]['intervals'][0]['end']),Clock.value)
+        self.assertEqual(rows[1]['intervals'][0]['duration'],110)
+        past=self.runtime.input_timeline(T+timedelta(seconds=30),T+timedelta(seconds=60))['rows'][1]['intervals'][0]
+        self.assertEqual((past['start'],past['end']),( (T+timedelta(seconds=30)).isoformat(),(T+timedelta(seconds=60)).isoformat()))
+        self.assertEqual(past['duration'],30)
 
-    def async_record_observation_gap(self, now: datetime) -> None:
-        """Monitoring was unavailable after the last persisted observation."""
-        if self._observed_at is None or self._observed_at >= now:
-            return
-        start = self._observed_at
-        if self._intervals and self._intervals[-1].end is not None:
-            start = max(start, self._intervals[-1].end)
-        if start < now:
-            self.async_open_interval(start, "offline")
-            self.async_close_interval(now)
+    async def test_on_without_events_for_hours_stays_online(self):
+        self.edge('binary_sensor.b','on',10)
+        since=self.engine.state_since
+        for seconds in (61,120,3600,7200):
+            Clock.value=T+timedelta(seconds=seconds)
+            await self.engine.async_flush()
+            self.assertEqual(self.engine.state,'work')
+            self.assertTrue(self.runtime.snapshot().inputs_available)
+            self.assertTrue(self.history.input_intervals('input_2')[0].is_open)
+        self.assertEqual(self.engine.state_since,since)
+        self.assertEqual(self.runtime.offline_periods(T,Clock.value),[])
 
-    def async_open_interval(
-        self,
-        start: datetime,
-        state: str,
-        source_input: str | None = None,
-        source_entity: str | None = None,
-    ) -> Interval:
-        """Append a new open semantic interval."""
-        interval = Interval(
-            start=start,
-            end=None,
-            state=state,
-            source_input=source_input,
-            source_entity=source_entity,
-        )
-        self._intervals.append(interval)
-        self._trim()
-        self._dirty = True
-        return interval
+    async def test_off_without_events_for_hours_stays_online(self):
+        Clock.value=T+timedelta(hours=2)
+        await self.engine.async_flush()
+        self.assertEqual(self.engine.state,'idle')
+        self.assertTrue(self.runtime.snapshot().inputs_available)
+        self.assertFalse(self.runtime.snapshot().active_inputs['input_1'])
+        self.assertEqual(self.runtime.offline_periods(T,Clock.value),[])
 
-    def async_close_interval(self, end: datetime) -> Interval | None:
-        """Close the currently open semantic interval."""
-        if not self._intervals:
-            return None
-        last = self._intervals[-1]
-        if not last.is_open:
-            return None
-        if end <= last.start:
-            end = last.start + timedelta(milliseconds=1)
-        last.end = end
-        self._dirty = True
-        return last
+    async def test_diagnostics_exact_unavailable_source_and_raw_transitions(self):
+        self.edge('binary_sensor.b','on',10)
+        self.edge('binary_sensor.b','unknown',20)
+        self.assertEqual(self.engine.state,'offline')
+        first=self.engine.offline_reason()['sources'][0]
+        self.assertEqual((first['slot'],first['entity_id'],first['ha_state'],first['physical_on']),
+                         ('input_2','binary_sensor.b','unknown',None))
+        events=len(self.hass.events)
+        self.edge('binary_sensor.b','unavailable',30)
+        self.assertEqual(len(self.hass.events),events+1)
+        self.assertEqual(self.engine.offline_reason()['sources'][0]['ha_state'],'unavailable')
+        self.edge('binary_sensor.b',None,40)
+        self.assertIsNone(self.engine.source_diagnostics()[1]['ha_state'])
+        self.assertEqual(self.engine.source_diagnostics()[1]['last_changed'],Clock.value.isoformat())
+        self.edge('binary_sensor.b','on',50)
+        self.assertIsNone(self.engine.offline_reason()['code'])
+        self.assertEqual(self.durations('input_2'),[10,0])
+        self.assertEqual(self.runtime.offline_periods(T,Clock.value)[0]['duration'],30)
+        self.assertEqual(self.runtime.dashboard_payload(T,Clock.value)['source_diagnostics'][1]['ha_state'],'on')
 
-    def async_prune(self, older_than: datetime) -> int:
-        """Drop closed intervals entirely before the retained window."""
-        before = len(self._intervals)
-        self._intervals = [
-            item for item in self._intervals if item.end is None or item.end > older_than
-        ]
-        removed = before - len(self._intervals)
+    async def test_source_absent_at_start_then_confirmed_on(self):
+        await self.engine.async_stop()
+        self.hass.values.pop('binary_sensor.b')
+        Clock.value=T+timedelta(seconds=10)
+        await self.engine.async_start()
+        self.assertEqual(self.engine.state,'offline')
+        self.assertIsNone(self.engine.offline_reason()['sources'][0]['ha_state'])
+        self.edge('binary_sensor.b','on',30)
+        self.assertEqual(self.history.input_intervals('input_2')[0].start,Clock.value)
+        self.assertEqual(self.runtime.offline_periods(T,Clock.value)[-1]['duration'],20)
 
-        before_inputs = sum(len(v) for v in self._input_intervals.values())
-        for slot in list(self._input_intervals):
-            self._input_intervals[slot] = [
-                item
-                for item in self._input_intervals[slot]
-                if item.end is None or item.end > older_than
-            ]
-            if not self._input_intervals[slot]:
-                del self._input_intervals[slot]
-        removed += before_inputs - sum(
-            len(v) for v in self._input_intervals.values()
-        )
+    async def test_state_object_recreation_does_not_split_on(self):
+        self.edge('binary_sensor.b','on',10)
+        self.edge('binary_sensor.b','on',120)
+        self.assertEqual(len(self.history.input_intervals('input_2')),1)
+        self.assertEqual(self.engine.state,'work')
 
-        if removed:
-            self._dirty = True
-            _LOGGER.info(
-                "Machine Monitor: pruned %s old intervals for %s",
-                removed,
-                self.machine_id,
-            )
-        return removed
+    async def test_restart_reconciles_on_after_crash_preserving_closed_history(self):
+        self.edge('binary_sensor.a','on',10)
+        self.edge('binary_sensor.a','off',20)
+        self.edge('binary_sensor.b','on',30)
+        Clock.value=T+timedelta(seconds=60)
+        await self.engine.async_flush()
+        Clock.value=T+timedelta(seconds=120)
+        fresh=engine_mod.EventEngine(self.hass,'m',self.profile,storage.HistoryStore(self.hass,'m'))
+        await fresh.async_start()
+        self.assertEqual(fresh.history.input_intervals('input_1')[0].duration_seconds(),10)
+        entries=fresh.history.input_intervals('input_2')
+        self.assertEqual(entries[0].end,T+timedelta(seconds=60))
+        self.assertEqual(entries[1].start,Clock.value)
+        offline=[i for i in fresh.history.intervals if i.state=='offline']
+        self.assertEqual((offline[0].start,offline[0].end),(T+timedelta(seconds=60),Clock.value))
+        self.assertEqual(fresh.history.intervals[-1].start,Clock.value)
+        self.assertTrue(entries[1].is_open)
+        await fresh.async_stop()
 
-    def async_clear(self) -> None:
-        """Remove both timelines."""
-        self._intervals = []
-        self._input_intervals = {}
-        self._dirty = True
+    async def test_own_source_rejected_in_create_reconfigure_options(self):
+        own='binary_sensor.renamed_diagnostic'
+        self.hass.registry_entries[own]=types.SimpleNamespace(platform='machine_monitor',entity_id=own)
+        user={f'input_{i}':own if i==4 else 'binary_sensor.a' for i in range(1,5)}
+        flow=flow_mod.MachineMonitorConfigFlow();flow.hass=self.hass
+        result=await flow.async_step_user(user)
+        self.assertEqual(result['errors'],{'input_4':'own_entity'})
+        flow._get_reconfigure_entry=lambda:types.SimpleNamespace(title='Test',data=user)
+        result=await flow.async_step_reconfigure(user)
+        self.assertEqual(result['errors'],{'input_4':'own_entity'})
+        options=flow_mod.MachineMonitorOptionsFlow();options.hass=self.hass
+        async def profile():return copy.deepcopy(self.profile)
+        options._async_current_profile=profile
+        async def save(p):self.fail('Invalid source must not be saved')
+        options._async_save_profile=save
+        result=await options.async_step_input_1({'entity_id':own})
+        self.assertEqual(result['errors'],{'entity_id':'own_entity'})
 
-    def _trim(self) -> None:
-        """V6 retains by age. A transition-count cap silently loses recent days."""
+    async def test_own_source_existing_profile_is_unknown_with_reason(self):
+        self.hass.registry_entries['binary_sensor.b']=types.SimpleNamespace(platform='machine_monitor',entity_id='binary_sensor.b')
+        self.hass.values['binary_sensor.b']=types.SimpleNamespace(state='on')
+        await self.engine.async_stop()
+        await self.engine.async_start()
+        self.assertEqual(self.engine.state,'offline')
+        self.assertIsNone(self.runtime.snapshot().active_inputs['input_2'])
+        self.assertEqual(self.engine.offline_reason()['sources'][0]['source_error'],'own_entity')
+        self.assertEqual(self.history.input_intervals('input_2'),[])
 
-    def set_retention(self, days: int) -> None:
-        days = max(1, min(365, int(days)))
-        if self.retention_days != days:
-            self.retention_days = days
-            self._last_cleanup = None
+    async def test_profile_store_rejects_own_sources_without_overwriting(self):
+        coordinator=coordinator_mod.MachineMonitorCoordinator(self.hass)
+        await coordinator.async_update_profile('m',self.profile)
+        before=copy.deepcopy(Store.data)
+        invalid=copy.deepcopy(self.profile)
+        invalid.inputs['input_1'].entity_id='binary_sensor.self'
+        self.hass.registry_entries['binary_sensor.self']=types.SimpleNamespace(platform='machine_monitor',entity_id='binary_sensor.self')
+        with self.assertRaises(ValueError):await coordinator.async_update_profile('m',invalid)
+        self.assertEqual(Store.data,before)
 
-    async def async_prune_due(self, now: datetime, *, force=False) -> int:
-        """Prepare retained lists and release expired records off the HA loop.
+    async def test_reconfigure_preserves_real_sources_and_semantics(self):
+        coordinator=coordinator_mod.MachineMonitorCoordinator(self.hass)
+        await coordinator.async_update_profile('m',self.profile)
+        self.hass.data['machine_monitor']={'coordinator':coordinator}
+        entry=types.SimpleNamespace(entry_id='m',title='Test',data={'input_1':'binary_sensor.a','input_2':'binary_sensor.b'})
+        flow=flow_mod.MachineMonitorConfigFlow();flow.hass=self.hass
+        flow._get_reconfigure_entry=lambda:entry
+        flow.async_update_reload_and_abort=lambda entry,**kw:kw
+        user={f'input_{i}':f'binary_sensor.mqtt_input{i}' for i in range(1,5)}
+        # Reconfigure is normally four configured slots; retain their semantics.
+        profile=copy.deepcopy(self.profile)
+        profile.inputs.update({f'input_{i}':models.InputConfig('binary_sensor.old'+str(i)) for i in (3,4)})
+        await coordinator.async_update_profile('m',profile)
+        result=await flow.async_step_reconfigure(user)
+        restored=await coordinator.async_profile_for(entry)
+        self.assertEqual({slot:cfg.entity_id for slot,cfg in restored.inputs.items()},user)
+        self.assertEqual({slot:result['data'][slot] for slot in user},user)
+        self.assertEqual(restored.inputs['input_2'].semantic_state,'work')
 
-        Existing records are stable except the current tail. Transitions appended
-        while the executor runs are carried over before swapping list references.
-        """
-        async with self._prune_lock:
-            if not force and self._last_cleanup and now - self._last_cleanup < timedelta(days=1):
-                return 0
-            groups = [(None, self._intervals, len(self._intervals))]
-            groups.extend((slot, items, len(items)) for slot, items in self._input_intervals.items())
-            prepared = await self.hass.async_add_executor_job(
-                self._retained_groups, groups, now - timedelta(days=self.retention_days))
-            removed = 0
-            for slot, original, length, index, retained in prepared:
-                current = self._intervals if slot is None else self._input_intervals.get(slot)
-                if index and current is original:
-                    retained.extend(original[length:])
-                    if slot is None:
-                        self._intervals = retained
-                    else:
-                        self._input_intervals[slot] = retained
-                    removed += index
-            self._last_cleanup = now
-            if removed:
-                self._dirty = True
-            # Do not leave the final reference to a large discarded list on-loop.
-            current = original = retained = None
-            groups.clear()
-            await self.hass.async_add_executor_job(prepared.clear)
-            return removed
+    async def test_debug_logs_include_source_and_interval_edges(self):
+        with self.assertLogs('machine_monitor.event_engine',level='DEBUG') as log:
+            self.edge('binary_sensor.b','on',10)
+            self.edge('binary_sensor.b','unavailable',20)
+        output='\n'.join(log.output)
+        for word in ('Machine m', 'input_2', 'binary_sensor.b', 'HA state=unavailable',
+                     'physical interval opened','physical interval closed','offline_reason='):
+            self.assertIn(word,output)
 
-    @staticmethod
-    def _retained_groups(groups, cutoff):
-        result = []
-        for slot, entries, length in groups:
-            index = bisect_right(entries, cutoff.timestamp(), hi=length,
-                                 key=lambda iv: iv.end.timestamp() if iv.end else float("inf"))
-            result.append((slot, entries, length, index, entries[index:length] if index else None))
-        return result
+    async def test_original_mqtt_source_name_not_mistaken_for_own_entity(self):
+        name='binary_sensor.machine_monitor_esp_input4'
+        self.hass.registry_entries[name]=types.SimpleNamespace(platform='mqtt',entity_id=name)
+        self.assertFalse(importlib.import_module('machine_monitor.source_validation').is_own_source(self.hass,name))
 
-    @staticmethod
-    def query(entries, start=None, end=None, *, include_previous=False):
-        """Closed intervals are ordered and disjoint within each history."""
-        first = bisect_right(entries, start.timestamp(), key=lambda iv: iv.end.timestamp() if iv.end else float("inf")) if start else 0
-        if include_previous:
-            first = max(0, first - 1)
-        last = bisect_left(entries, end.timestamp(), key=lambda iv: iv.start.timestamp()) if end else len(entries)
-        return entries[first:last]
+    async def test_source_ids_persist_after_profile_save_and_reload(self):
+        coordinator=coordinator_mod.MachineMonitorCoordinator(self.hass)
+        entry=types.SimpleNamespace(entry_id='m',title='Test',data={'input_1':'binary_sensor.a','input_2':'binary_sensor.b'})
+        await coordinator.async_update_profile('m',self.profile)
+        reloaded=await coordinator.async_profile_for(entry)
+        self.assertEqual(reloaded.entity_ids(),self.profile.entity_ids())
+        self.assertEqual(reloaded.inputs['input_2'].semantic_state,'work')
 
-    @staticmethod
-    def freeze(entries):
-        """Closed records are immutable; only the tail may still be changing."""
-        result = list(entries)
-        if result and result[-1].is_open:
-            result[-1] = replace(result[-1])
-        return result
+    def register_diagnostic_names(self, names):
+        for i,name in enumerate(names,1):
+            entity_id=f'binary_sensor.diagnostic_{i}'
+            self.hass.registry_entries[entity_id]=types.SimpleNamespace(
+                entity_id=entity_id,platform='machine_monitor',config_entry_id='m',unique_id=f'm_input_{i}',name=name)
 
-    def _file_size(self):
-        try:
-            return Path(self._store.path).stat().st_size
-        except (OSError, AttributeError):
-            return None
+    async def name_coordinator(self):
+        profile=copy.deepcopy(self.profile)
+        for i in (3,4):
+            entity_id=f'binary_sensor.raw{i}'
+            self.hass.values[entity_id]=types.SimpleNamespace(state='off')
+            profile.inputs[f'input_{i}']=models.InputConfig(entity_id)
+        await self.runtime.async_apply_profile(profile)
+        self.profile=profile
+        coordinator=coordinator_mod.MachineMonitorCoordinator(self.hass)
+        coordinator.machines['m']=self.runtime
+        self.hass.data['machine_monitor']={'coordinator':coordinator}
+        entry=types.SimpleNamespace(entry_id='m',title='Test',data={slot:cfg.entity_id for slot,cfg in profile.inputs.items()})
+        await coordinator.async_update_profile('m',profile)
+        return coordinator,entry
 
-    def metadata(self, now=None):
-        if self._metadata_override is not None:
-            return self._metadata_override
-        now = now or datetime.now().astimezone()
-        groups = [entries for entries in [self._intervals, *self._input_intervals.values()] if entries]
-        oldest = min((entries[0].start for entries in groups), default=None)
-        newest = max((entries[-1].end or now for entries in groups), default=None)
-        available = max(oldest, now - timedelta(days=self.retention_days)) if oldest else None
-        return {"retention_days": self.retention_days, "size_bytes": self._size_bytes,
-                "size_basis": "persistent_file", "oldest_record": oldest.isoformat() if oldest else None,
-                "newest_record": newest.isoformat() if newest else None,
-                "available_from": available.isoformat() if available else None,
-                "physical_intervals": sum(len(items) for items in self._input_intervals.values()),
-                "semantic_intervals": len(self._intervals), "schema_version": 3,
-                "last_saved": self._last_saved_at.isoformat() if self._last_saved_at else None}
+    async def test_options_names_to_profile_reload_and_websocket_metadata(self):
+        c,entry=await self.name_coordinator()
+        self.assertEqual(self.runtime.profile.inputs['input_1'].display_name,'Input')
+        options=flow_mod.MachineMonitorOptionsFlow(entry);options.hass=self.hass
+        names=['Нагрев','Остывание','Поддержание','']
+        for i,name in enumerate(names,1):
+            await options._async_step_input(f'input_{i}',{'input_name':name})
+        expected=names[:3]+['Input']
+        self.assertEqual([cfg.display_name for cfg in self.runtime.profile.inputs.values()],expected)
+        self.assertEqual([cfg.display_name for cfg in (await c.async_profile_for(entry)).inputs.values()],expected)
+        await c.async_reload_machine_task(entry)
+        runtime=c.runtime_for('m');Clock.value=T+timedelta(seconds=120)
+        conn=Connection();await ws.ws_timeline(self.hass,conn,{'id':1,'machine_id':'m','start':T.isoformat(),'end':Clock.value.isoformat()})
+        for field in ('inputs','source_diagnostics','input_summary'):
+            self.assertEqual([row['name'] for row in conn.result[field]],expected)
+        self.assertEqual([row['name'] for row in conn.result['input_timeline']['rows']],expected)
+        await runtime.async_stop()
 
-    # ------------------------------------------------------------------
-    # Physical input timeline
-    # ------------------------------------------------------------------
-    def async_open_input_interval(
-        self,
-        slot: str,
-        start: datetime,
-    ) -> Interval:
-        """Open the ON interval of one physical input.
+    async def test_legacy_ha_renames_imported_once_into_profile(self):
+        c,entry=await self.name_coordinator()
+        raw=Store.data['machine_monitor.profiles']['profiles']['m']
+        raw.pop('input_names_profile_owned')
+        self.register_diagnostic_names(['Нагрев','Остывание','Поддержание',None])
+        restored=await c.async_profile_for(entry)
+        self.assertEqual([cfg.display_name for cfg in restored.inputs.values()],['Нагрев','Остывание','Поддержание','Input'])
+        persisted=Store.data['machine_monitor.profiles']['profiles']['m']
+        self.assertTrue(persisted['input_names_profile_owned'])
+        self.assertEqual(persisted['inputs']['input_1']['input_name'],'Нагрев')
+        # A stale registry override cannot replace an already canonical profile.
+        self.hass.registry_entries['binary_sensor.diagnostic_1'].name='Stale'
+        c.machines.pop('m')  # Reload/startup reconciles the HA projection.
+        restored=await c.async_profile_for(entry)
+        self.assertEqual(restored.inputs['input_1'].display_name,'Нагрев')
+        self.assertEqual(self.hass.registry_entries['binary_sensor.diagnostic_1'].name,'Нагрев')
 
-        A stray open interval is closed first so the timeline always stays
-        consistent.
-        """
-        self._close_input_interval_internal(slot, start)
-        interval = Interval(
-            start=start,
-            end=None,
-            state=INPUT_ON,
-            source_input=slot,
-        )
-        self._input_intervals.setdefault(slot, []).append(interval)
-        self._trim()
-        self._dirty = True
-        return interval
+    async def test_registry_rename_updates_profile_live_without_history_changes(self):
+        c,entry=await self.name_coordinator()
+        self.register_diagnostic_names(['Input']*4)
+        unsubs=[];entry.async_on_unload=unsubs.append
+        c.async_listen_input_names(entry)
+        self.edge('binary_sensor.b','on',10)
+        physical=self.history.input_intervals('input_2')[0]
+        semantic=self.history.intervals[-1]
+        self.engine.set_update_callback(c._schedule_refresh)
+        for i,name in enumerate(['Нагрев','Остывание','Поддержание'],1):
+            self.hass.update_registry(f'binary_sensor.diagnostic_{i}',name=name)
+        # Drain rename tasks and coordinator update tasks scheduled by callbacks.
+        for _ in range(4):
+            await asyncio.gather(*self.hass.tasks)
+        expected=['Нагрев','Остывание','Поддержание','Input']
+        self.assertEqual([cfg.display_name for cfg in self.runtime.profile.inputs.values()],expected)
+        self.assertIs(self.history.input_intervals('input_2')[0],physical)
+        self.assertTrue(physical.is_open)
+        self.assertIs(self.history.intervals[-1],semantic)
+        self.assertTrue(semantic.is_open)
+        self.assertEqual(len(self.history.input_intervals('input_2')),1)
+        self.assertEqual(self.engine._inputs['input_2'].config.display_name,'Остывание')
+        self.hass.update_registry('binary_sensor.diagnostic_1',name=None)
+        for _ in range(4):await asyncio.gather(*self.hass.tasks)
+        self.assertEqual(self.runtime.profile.inputs['input_1'].display_name,'Input')
+        self.assertTrue(any(data.get('type')=='profile' for _,data in self.hass.events))
+        unsubs[0]();self.assertEqual(self.hass.registry_listeners,[])
 
-    def async_close_input_interval(
-        self,
-        slot: str,
-        end: datetime,
-    ) -> Interval | None:
-        """Close the open ON interval of one physical input."""
-        interval = self._close_input_interval_internal(slot, end)
-        if interval is not None:
-            self._dirty = True
-        return interval
+    async def test_profile_read_does_not_erase_pending_registry_rename(self):
+        c,entry=await self.name_coordinator()
+        self.register_diagnostic_names(['Input']*4)
+        unsubs=[];entry.async_on_unload=unsubs.append;c.async_listen_input_names(entry)
+        self.hass.update_registry('binary_sensor.diagnostic_1',name='Нагрев')
+        # Options defaults may be read before the queued rename task obtains the lock.
+        await c.async_profile_for(entry)
+        for _ in range(4):await asyncio.gather(*self.hass.tasks)
+        self.assertEqual(self.runtime.profile.inputs['input_1'].display_name,'Нагрев')
+        self.assertEqual(self.hass.registry_entries['binary_sensor.diagnostic_1'].name,'Нагрев')
+        unsubs[0]()
 
-    def _close_input_interval_internal(
-        self,
-        slot: str,
-        end: datetime,
-    ) -> Interval | None:
-        """Close an open input interval without touching the dirty flag."""
-        entries = self._input_intervals.get(slot)
-        if not entries:
-            return None
-        last = entries[-1]
-        if not last.is_open:
-            return None
-        if end <= last.start:
-            end = last.start + timedelta(milliseconds=1)
-        last.end = end
-        self._dirty = True
-        return last
+    async def test_profile_options_override_old_registry_mirror(self):
+        c,entry=await self.name_coordinator()
+        self.register_diagnostic_names(['Старое имя']*4)
+        options=flow_mod.MachineMonitorOptionsFlow(entry);options.hass=self.hass
+        await options.async_step_input_1({'input_name':'Нагрев'})
+        self.assertEqual(self.runtime.profile.inputs['input_1'].display_name,'Нагрев')
+        self.assertEqual(self.hass.registry_entries['binary_sensor.diagnostic_1'].name,'Нагрев')
 
-    def async_repair_open_input_intervals(self, now: datetime) -> int:
-        """Close input intervals left open by a restart.
+    async def test_migration_preserves_explicit_profile_name(self):
+        c,entry=await self.name_coordinator()
+        raw=Store.data['machine_monitor.profiles']['profiles']['m']
+        raw.pop('input_names_profile_owned')
+        raw['inputs']['input_1']['input_name']='Профиль'
+        self.register_diagnostic_names(['Старое имя',None,None,None])
+        restored=await c.async_profile_for(entry)
+        self.assertEqual(restored.inputs['input_1'].display_name,'Профиль')
+        self.assertEqual(self.hass.registry_entries['binary_sensor.diagnostic_1'].name,'Профиль')
 
-        Close at the last persisted observation. No activity is inferred
-        during the unobserved gap; a confirmed ON opens a fresh interval.
-        """
-        repaired = 0
-        for slot in list(self._input_intervals):
-            entries = self._input_intervals.get(slot) or []
-            if not entries:
-                continue
-            last = entries[-1]
-            if not last.is_open:
-                continue
-            last.end = max(last.start, min(self._observed_at or last.start, now))
-            repaired += 1
-            self._dirty = True
-            _LOGGER.debug(
-                "Machine Monitor: repaired open input interval %s of %s",
-                slot,
-                self.machine_id,
-            )
-        return repaired
+class PureTests(unittest.TestCase):
+    def test_display_name_fallback_and_profile_roundtrip(self):
+        for name in ('',None,'   '):
+            cfg=models.InputConfig('binary_sensor.source',input_name=name)
+            self.assertEqual(cfg.display_name,'Input')
+            self.assertEqual(models.InputConfig.from_dict(cfg.to_dict()).display_name,'Input')
+        profile=models.MachineProfile('m',inputs={'input_1':models.InputConfig('binary_sensor.source',input_name='Нагрев')})
+        self.assertEqual(models.MachineProfile.from_dict(profile.to_dict()).inputs['input_1'].display_name,'Нагрев')
 
-    def async_input_slices(
-        self,
-        slot: str,
-        start: datetime,
-        end: datetime,
-    ) -> list[dict[str, Any]]:
-        """Return ON slices of one input clipped to a window."""
-        now = datetime.now().astimezone()
-        result: list[dict[str, Any]] = []
-        for item in self._input_intervals.get(slot, []):
-            raw_end = item.end or now
-            if raw_end <= start or item.start >= end:
-                continue
-            clipped_start = max(item.start, start)
-            clipped_end = min(raw_end, end)
-            seconds = (clipped_end - clipped_start).total_seconds()
-            if seconds <= 0:
-                continue
-            result.append(
-                {
-                    "start": clipped_start.isoformat(),
-                    "end": clipped_end.isoformat(),
-                    "duration": round(seconds, 1),
-                    "offset": (clipped_start - start).total_seconds(),
-                    "state": INPUT_ON,
-                }
-            )
-        return result
+    def test_row_order_normalization_and_reload(self):
+        order=['input_3','input_1','input_4','input_2']
+        self.assertEqual(models.normalize_row_order(order),order)
+        self.assertEqual(models.normalize_row_order(order+['unknown','input_1']),order)
+        p=models.MachineProfile('m',inputs={s:models.InputConfig('binary_sensor.'+s) for s in order},row_order=order)
+        self.assertEqual(models.MachineProfile.from_dict(p.to_dict()).row_order,order)
+    def test_downtime_clipped_and_never_bridges_offline_gap(self):
+        intervals=[models.Interval(T,T+timedelta(minutes=10),'idle'),models.Interval(T+timedelta(minutes=10),T+timedelta(minutes=10,seconds=1),'offline'),models.Interval(T+timedelta(minutes=10,seconds=1),T+timedelta(minutes=20),'idle')]
+        info=stats_mod.analyse_downtime(intervals,T+timedelta(minutes=5),T+timedelta(minutes=15),states=['idle','offline'],threshold_minutes=0)
+        self.assertEqual(info.count,2)
+        self.assertEqual(info.total_seconds,599)
+    def test_exclusion_per_input_does_not_remove_physical_history(self):
+        end=T+timedelta(minutes=10)
+        intervals=[models.Interval(T,end,'work',source_input='input_1')]
+        st=stats_mod.compute_period_stats(intervals,T,end,include_inputs={'input_1':False})
+        self.assertEqual((st.work_seconds,st.idle_seconds),(0,0))
+        self.assertEqual(st.states,[])
+        physical=stats_mod.input_statistics({'input_1':[models.Interval(T,end,'on')]},T,end)
+        self.assertEqual(physical['input_1']['on_seconds'],600)
+    def test_offline_cannot_be_used_as_an_online_signal_meaning(self):
+        self.assertEqual(models.InputConfig('binary_sensor.a',semantic_state='offline').semantic_state,'other')
+        self.assertEqual(models.MachineProfile('m',no_active_state='offline').no_active_state,'idle')
 
-    # ------------------------------------------------------------------
-    # Persisting
-    # ------------------------------------------------------------------
-    def mark_observed(self, now: datetime) -> None:
-        """Checkpoint the last time the running engine knew its inputs."""
-        self._observed_at = now
-        self._dirty = True
+    def test_long_period(self):
+        start,end=stats_mod.period_bounds(T,'30d')
+        self.assertEqual((end-start).days,30)
+    def test_imports_all_python_modules_with_ha_boundaries(self):
+        for name in ('sensor','binary_sensor','config_flow','coordinator','websocket_api'):
+            importlib.import_module('machine_monitor.'+name)
+        from importlib.machinery import SourceFileLoader
+        spec=importlib.util.spec_from_loader('machine_monitor.integration', SourceFileLoader('machine_monitor.integration', str(ROOT/'__init__.py')), is_package=False)
+        mod=importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
 
-    async def async_flush(self) -> bool:
-        """Serialize writes so an older save cannot overwrite a newer one."""
-        async with self._save_lock:
-            return await self._async_save()
-
-    async def _async_save(self) -> bool:
-        """Write both timelines to disk; additive schema remains v1-loadable."""
-        semantic = self.freeze(self._intervals)
-        physical = {slot: self.freeze(items) for slot, items in self._input_intervals.items()}
-        seen, observed = self.last_seen, self._observed_at
-        # Changes may arrive while async_save yields. Retain their dirty flag.
-        self._dirty = False
-        try:
-            payload = await self.hass.async_add_executor_job(self._encode, semantic, physical, seen, observed)
-            await self._store.async_save(payload)
-            self._last_saved_at = datetime.now().astimezone()
-            self._size_bytes = await self.hass.async_add_executor_job(self._file_size)
-            return True
-        except Exception:  # noqa: BLE001 - never break the event loop
-            self._dirty = True
-            _LOGGER.exception(
-                "Machine Monitor: could not save history for %s",
-                self.machine_id,
-            )
-            return False
-
-    def _encode(self, semantic, physical, seen, observed):
-        return {"history_schema_version": 3, "machine_id": self.machine_id,
-                "last_seen": seen.isoformat() if seen else None,
-                "observed_at": observed.isoformat() if observed else None,
-                "intervals": [item.to_dict() for item in semantic],
-                "input_intervals": {slot: [item.to_dict() for item in items] for slot, items in physical.items()}}
-
-    async def async_flush_if_dirty(self, *, force=True) -> None:
-        """Batch event-driven refresh writes; lifecycle calls force a flush."""
-        if not force and self._last_saved_at and datetime.now().astimezone() - self._last_saved_at < timedelta(seconds=30):
-            return
-        if self._dirty:
-            await self.async_flush()
-
-
-def store_key(machine_id: str) -> str:
-    """Return the storage key used for a machine."""
-    return f"{STORAGE_KEY_PREFIX}.{machine_id}"
-
-
-__all__ = ["HistoryStore", "store_key", "INPUT_ON"]
+if __name__=='__main__':unittest.main()

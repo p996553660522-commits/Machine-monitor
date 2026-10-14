@@ -70,12 +70,14 @@ class MachineRuntime:
 
     async def async_apply_profile(self, profile: MachineProfile) -> None:
         """Replace the profile and restart the engine if needed."""
+        if self.profile.to_dict() == profile.to_dict():
+            return
         old_data, new_data = self.profile.to_dict(), profile.to_dict()
         for data in (old_data, new_data):
-            for key in ("retention_days", "shifts", "row_order", "name", "description"):
+            for key in ("retention_days", "shifts", "row_order", "name", "description", "rules"):
                 data.pop(key, None)
             for cfg in data[CONF_INPUTS].values():
-                for key in ("input_name", "input_description", "color", "icon", "show_in_timeline", "include_in_statistics"):
+                for key in ("input_name", "input_description", "color", "icon", "show_in_timeline", "include_in_statistics", "accounting", "semantic_state", "priority"):
                     cfg.pop(key, None)
         if old_data == new_data and self.profile.to_dict() != profile.to_dict():
             # Display, reporting and retention edits must not split observations.
@@ -273,6 +275,7 @@ class MachineRuntime:
                     "description": cfg.input_description,
                     "entity_id": cfg.entity_id,
                     "semantic_state": cfg.semantic_state,
+                    "accounting": cfg.accounting,
                     "icon": cfg.effective_icon,
                     "color": cfg.effective_color,
                     "enabled": cfg.enabled and self.engine.acquisition_enabled(slot),
@@ -351,6 +354,7 @@ class MachineRuntime:
                     "icon": cfg.effective_icon,
                     "color": cfg.effective_color,
                     "semantic_state": cfg.semantic_state,
+                    "accounting": cfg.accounting,
                     "on": snapshot.active_inputs.get(slot),
                     "enabled": cfg.enabled and self.engine.acquisition_enabled(slot),
                     "acquisition_enabled": self.engine.acquisition_enabled(slot),
@@ -385,7 +389,10 @@ class MachineRuntime:
             events.append(
                 {
                     "state": item.state,
-                    "state_label": item.state.replace("_", " ").title(),
+                    "state_label": item.input_label or item.state.replace("_", " ").title(),
+                    "custom_label": item.input_label,
+                    "accounting": item.accounting,
+                    "rule_id": item.rule_id,
                     "color": cfg.effective_color if cfg else None,
                     "icon": cfg.effective_icon if cfg else None,
                     "input": item.source_input,
@@ -399,7 +406,7 @@ class MachineRuntime:
                     ),
                 }
             )
-        events.sort(key=lambda entry: entry["start"], reverse=True)
+        events.sort(key=lambda entry: datetime.fromisoformat(entry["start"]), reverse=True)
         input_timeline = self.input_timeline(start, end, slots=slots)
 
         return {
@@ -423,6 +430,7 @@ class MachineRuntime:
                     "name": cfg.display_name,
                     "description": cfg.input_description,
                     "semantic_state": cfg.semantic_state,
+                    "accounting": cfg.accounting,
                     "icon": cfg.effective_icon,
                     "color": cfg.effective_color,
                     "enabled": cfg.enabled,
@@ -438,6 +446,7 @@ class MachineRuntime:
                 "no_active_state": self.profile.no_active_state,
                 "retention_days": self.profile.retention_days,
                 "shifts": self.profile.shifts,
+                "rules": self.profile.rules,
             },
         }
 

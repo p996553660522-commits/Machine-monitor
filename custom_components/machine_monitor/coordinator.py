@@ -270,6 +270,7 @@ class MachineMonitorCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "description": runtime.profile.description,
                 "state": snapshot.state,
                 "state_label": snapshot.state_label,
+                "custom_label": snapshot.custom_label,
                 "state_icon": snapshot.to_dict()["state_icon"],
                 "state_color": snapshot.to_dict()["state_color"],
                 "state_since": snapshot.state_since.isoformat(),

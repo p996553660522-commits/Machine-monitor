@@ -71,7 +71,8 @@
           "input_1": "Input 1",
           "input_2": "Input 2",
           "input_3": "Input 3",
-          "input_4": "Input 4"
+          "input_4": "Input 4",
+          "rules": "Modes and AND/OR conditions"
         }
       },
       "machine": {
@@ -132,11 +133,14 @@
           "color": "Colour",
           "enabled": "Enabled",
           "show_in_timeline": "Show in Real Flow",
-          "include_in_statistics": "Include in statistics"
+          "include_in_statistics": "Include in statistics",
+          "accounting": "Time accounting"
         },
         "data_description": {
           "semantic_state": "What this signal means for the machine",
-          "priority": "Leave empty to use the default priority of the state. Higher wins when several inputs are active."
+          "priority": "Leave empty to use the default priority of the state. Higher wins when several inputs are active.",
+          "accounting": "Applies to future intervals. Automatic: work is productive, other categories non-productive. Offline always stays separate.",
+          "input_name": "Signal and machine mode name, e.g. Fan or Laser emission. Shown in Real Flow and events."
         }
       },
       "input_2": {
@@ -152,11 +156,14 @@
           "color": "Colour",
           "enabled": "Enabled",
           "show_in_timeline": "Show in Real Flow",
-          "include_in_statistics": "Include in statistics"
+          "include_in_statistics": "Include in statistics",
+          "accounting": "Time accounting"
         },
         "data_description": {
           "semantic_state": "What this signal means for the machine",
-          "priority": "Leave empty to use the default priority of the state. Higher wins when several inputs are active."
+          "priority": "Leave empty to use the default priority of the state. Higher wins when several inputs are active.",
+          "accounting": "Applies to future intervals. Automatic: work is productive, other categories non-productive. Offline always stays separate.",
+          "input_name": "Signal and machine mode name, e.g. Fan or Laser emission. Shown in Real Flow and events."
         }
       },
       "input_3": {
@@ -172,11 +179,14 @@
           "color": "Colour",
           "enabled": "Enabled",
           "show_in_timeline": "Show in Real Flow",
-          "include_in_statistics": "Include in statistics"
+          "include_in_statistics": "Include in statistics",
+          "accounting": "Time accounting"
         },
         "data_description": {
           "semantic_state": "What this signal means for the machine",
-          "priority": "Leave empty to use the default priority of the state. Higher wins when several inputs are active."
+          "priority": "Leave empty to use the default priority of the state. Higher wins when several inputs are active.",
+          "accounting": "Applies to future intervals. Automatic: work is productive, other categories non-productive. Offline always stays separate.",
+          "input_name": "Signal and machine mode name, e.g. Fan or Laser emission. Shown in Real Flow and events."
         }
       },
       "input_4": {
@@ -192,11 +202,44 @@
           "color": "Colour",
           "enabled": "Enabled",
           "show_in_timeline": "Show in Real Flow",
-          "include_in_statistics": "Include in statistics"
+          "include_in_statistics": "Include in statistics",
+          "accounting": "Time accounting"
         },
         "data_description": {
           "semantic_state": "What this signal means for the machine",
-          "priority": "Leave empty to use the default priority of the state. Higher wins when several inputs are active."
+          "priority": "Leave empty to use the default priority of the state. Higher wins when several inputs are active.",
+          "accounting": "Applies to future intervals. Automatic: work is productive, other categories non-productive. Offline always stays separate.",
+          "input_name": "Signal and machine mode name, e.g. Fan or Laser emission. Shown in Real Flow and events."
+        }
+      },
+      "rules": {
+        "title": "Machine modes",
+        "description": "Choose + to add a mode or an existing mode to edit. When any mode is enabled, its conditions replace single-input priority resolution. No match uses the no-active state. Offline always takes precedence.",
+        "data": {
+          "mode": "Mode",
+          "delete": "Delete selected mode"
+        }
+      },
+      "mode": {
+        "title": "Configure mode",
+        "description": "Use any mode name: Fan, Laser emission, Bending. Category and accounting are independent. Higher priority wins overlapping matches.",
+        "data": {
+          "name": "Mode name",
+          "state": "Category",
+          "priority": "Priority",
+          "enabled": "Enabled",
+          "accounting": "Time accounting"
+        }
+      },
+      "conditions": {
+        "title": "Mode conditions",
+        "description": "Mode {mode}, group {group}. Conditions within a group use AND. Additional groups use OR. Ignore means no condition. Unknown or disabled inputs match neither ON nor OFF.\n\n{inputs}",
+        "data": {
+          "input_1": "Input 1",
+          "input_2": "Input 2",
+          "input_3": "Input 3",
+          "input_4": "Input 4",
+          "another_group": "Add another OR group"
         }
       }
     },
@@ -204,7 +247,8 @@
       "name_required": "Enter a machine name",
       "own_entity": "Select an original MQTT/device binary sensor. Machine Monitor diagnostic entities cannot be used as sources.",
       "entity_required": "Select an entity",
-      "invalid_history_settings": "Select a supported retention. Shifts require unique names, HH:MM times, and no overlaps."
+      "invalid_history_settings": "Select a supported retention. Shifts require unique names, HH:MM times, and no overlaps.",
+      "invalid_rule": "Enter a name and at least one condition. Maximum: 32 modes, 16 groups per mode."
     }
   },
   "selector": {
@@ -220,6 +264,21 @@
         "alarm": "Alarm",
         "other": "Other",
         "offline": "Offline"
+      }
+    },
+    "accounting": {
+      "options": {
+        "auto": "Automatic by category",
+        "productive": "Productive",
+        "non_productive": "Non-productive",
+        "excluded": "Exclude from accounting"
+      }
+    },
+    "condition_state": {
+      "options": {
+        "ignore": "Ignore",
+        "on": "ON",
+        "off": "OFF"
       }
     }
   },

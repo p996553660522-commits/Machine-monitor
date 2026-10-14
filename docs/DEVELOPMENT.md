@@ -10,7 +10,7 @@ From the repository root:
 cd custom_components/machine_monitor
 python -m unittest discover -s tests -p 'test_*.py'
 node --check frontend/machine_monitor_card.js
-node --test tests/frontend.test.cjs tests/v6_frontend.test.cjs tests/localization.test.cjs
+node --test tests/frontend.test.cjs tests/v6_frontend.test.cjs tests/localization.test.cjs tests/v14_frontend.test.cjs
 ```
 
 The Python tests provide minimal Home Assistant boundary stubs. Frontend tests use a minimal DOM harness. Passing these tests does not claim full compatibility with every HA release or hardware configuration.

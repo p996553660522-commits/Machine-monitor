@@ -32,7 +32,7 @@ Machine Profile is the canonical configuration: input names, categories, priorit
 
 OFFLINE is a historical interval of unknown activity. Availability loss closes uncertain physical ON intervals. A newly confirmed ON after recovery starts a new interval. No activity is reconstructed inside the gap.
 
-History schema 3 stores separate `intervals` and `input_intervals`, plus observation metadata. Legacy semantic-only histories load without fabrication of missing physical data. HA Store writes are atomic and serialized outside the event loop; retention pruning runs at startup/daily and when retention decreases.
+History schema 4 stores separate `intervals` and `input_intervals`, plus observation metadata. Legacy semantic-only histories load without fabrication of missing physical data. HA Store writes are atomic and serialized outside the event loop; retention pruning runs at startup/daily and when retention decreases.
 
 ## Main modules
 
@@ -63,3 +63,14 @@ A profile may bind one to four sources. Missing slots are omitted, never filled 
 Effective observation permission is `InputConfig.enabled AND acquisition_enabled`. The persistent profile retains the user's own permission and canonical name. The event engine evaluates source attributes from each delivered HA state event (including attribute-only changes), closes physical ON intervals when permission disappears, and resumes only on a valid ON event. Only effectively enabled sources affect priority and the machine availability decision. Disabling every source gives OFFLINE/no_enabled_inputs.
 
 The API exposes profile_enabled, acquisition_enabled and effective enabled separately. Historical intervals and statistics remain stored; toggles affect future acquisition, not historical facts. Existing filters can reveal a disabled input's past activity. No storage schema change, source-specific MQTT subscription, control output, or semantic engine in firmware is introduced.
+
+
+## Universal modes and accounting (1.4.0)
+
+Profiles store `rules`: named modes with category, priority, enabled permission, accounting and an OR of AND condition groups. Each term tests an enabled, available source for confirmed ON/OFF. Bounds are 32 modes, 16 groups and four terms per group. No expression interpreter, polling loop or firmware semantics is added. Enabled rules replace the legacy individual-input semantic winner; unmatched rules use the profile fallback. Availability takes precedence. Physical acquisition and history remain independent.
+
+Semantic intervals snapshot `input_label`, `rule_id`, `accounting` and `included`. Accounting changes split the semantic interval at the edit instant without splitting physical ON. Schema 1–3 migration pins legacy category-based accounting before new rules run. Reports and statistics use the interval snapshot. Profile names reach the UI through backend metadata, never HA diagnostic friendly_name.
+
+Schema 4 is forward incompatible with older integration versions. Preserve a pre-upgrade backup of Machine Monitor `.storage` profiles/history before downgrade; older code must not overwrite the upgraded history. The HA Store envelope version remains unchanged; history schema is versioned in the payload.
+
+Real Flow grouping (<10 seconds) is browser-only, per physical row, cached, and reversible. It retains transparent/unknown gaps and exact ON totals. Dense groups use bounded hatch styles. It never changes persistent intervals or productivity statistics. Events sort by instants rather than lexical timezone representations.

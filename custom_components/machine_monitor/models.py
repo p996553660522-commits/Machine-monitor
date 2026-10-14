@@ -95,12 +95,15 @@ class InputConfig:
     show_in_timeline: bool = True
     include_in_statistics: bool = True
     priority: int | None = None
+    accounting: str = "auto"
 
     def __post_init__(self) -> None:
         # Availability alone owns OFFLINE; it is never a physical ON meaning.
         if self.semantic_state not in SEMANTIC_STATES or self.semantic_state == "offline":
             self.semantic_state = "other"
         self.color = normalize_color(self.color)
+        if self.accounting not in ("auto", "productive", "non_productive", "excluded"):
+            self.accounting = "auto"
 
     @property
     def effective_priority(self) -> int:
@@ -137,6 +140,7 @@ class InputConfig:
             CONF_SHOW_IN_TIMELINE: self.show_in_timeline,
             CONF_INCLUDE_IN_STATISTICS: self.include_in_statistics,
             CONF_PRIORITY: self.priority,
+            "accounting": self.accounting,
         }
 
     @classmethod
@@ -155,6 +159,7 @@ class InputConfig:
                 data.get(CONF_INCLUDE_IN_STATISTICS, True)
             ),
             priority=data.get(CONF_PRIORITY),
+            accounting=data.get("accounting", "auto"),
         )
 
 
@@ -176,6 +181,37 @@ def validate_shifts(shifts) -> list[dict[str, str]]:
     return result
 
 
+def validate_mode_rules(rules):
+    """OR of AND groups covers every boolean combination of four inputs."""
+    if not isinstance(rules, list) or len(rules) > 32:
+        raise ValueError("At most 32 modes")
+    result, ids = [], set()
+    for raw in rules:
+        ident, name = str(raw.get("id", "")), str(raw.get("name", "")).strip()
+        groups = raw.get("conditions", [])
+        if not ident or ident in ids or not name or not isinstance(groups, list) or not 1 <= len(groups) <= 16:
+            raise ValueError("Mode needs unique ID, name and conditions")
+        if raw.get("state") not in SEMANTIC_STATES or raw.get("state") == "offline":
+            raise ValueError("Offline belongs to availability")
+        if raw.get("accounting", "auto") not in ("auto", "productive", "non_productive", "excluded"):
+            raise ValueError("Invalid accounting")
+        normalized = []
+        for group in groups:
+            if not isinstance(group, list) or not 1 <= len(group) <= 4:
+                raise ValueError("Empty or oversized condition group")
+            slots = set()
+            for term in group:
+                if term.get("input") not in INPUT_SLOTS or term.get("state") not in ("on", "off") or term["input"] in slots:
+                    raise ValueError("Invalid input condition")
+                slots.add(term["input"])
+            normalized.append([{"input":term["input"], "state":term["state"]} for term in group])
+        result.append({"id":ident,"name":name,"state":raw["state"],
+                       "priority":int(raw.get("priority",100)),"enabled":bool(raw.get("enabled",True)),
+                       "accounting":raw.get("accounting","auto"),"conditions":normalized})
+        ids.add(ident)
+    return result
+
+
 @dataclass(slots=True)
 class MachineProfile:
     """Full description of one monitored machine."""
@@ -192,10 +228,12 @@ class MachineProfile:
     row_order: list[str] | None = None
     retention_days: int = DEFAULT_RETENTION_DAYS
     shifts: list[dict[str, str]] = field(default_factory=list)
+    rules: list[dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.retention_days = max(1, min(365, int(self.retention_days)))
         self.shifts = validate_shifts(self.shifts)
+        self.rules = validate_mode_rules(self.rules)
         for slot, cfg in self.inputs.items():
             if not cfg.color and slot in INPUT_SLOTS:
                 cfg.color = INPUT_COLORS[INPUT_SLOTS.index(slot)]
@@ -220,6 +258,7 @@ class MachineProfile:
             "machine_id": self.machine_id,
             "retention_days": self.retention_days,
             "shifts": self.shifts,
+            "rules": self.rules,
             CONF_NAME: self.name,
             CONF_DESCRIPTION: self.description,
             CONF_ENABLED: self.enabled,
@@ -242,6 +281,7 @@ class MachineProfile:
             machine_id=data.get("machine_id", ""),
             retention_days=data.get("retention_days", DEFAULT_RETENTION_DAYS),
             shifts=data.get("shifts", []),
+            rules=data.get("rules", []),
             name=data.get(CONF_NAME, DEFAULT_NAME),
             description=data.get(CONF_DESCRIPTION, ""),
             enabled=bool(data.get(CONF_ENABLED, True)),
@@ -268,6 +308,10 @@ class Interval:
     state: str
     source_input: str | None = None
     source_entity: str | None = None
+    input_label: str | None = None
+    accounting: str | None = None
+    included: bool | None = None
+    rule_id: str | None = None
 
     @property
     def is_open(self) -> bool:
@@ -291,6 +335,8 @@ class Interval:
             "state": self.state,
             "source_input": self.source_input,
             "source_entity": self.source_entity,
+            "input_label": self.input_label, "accounting": self.accounting,
+            "included": self.included, "rule_id": self.rule_id,
         }
 
     @classmethod
@@ -303,6 +349,9 @@ class Interval:
             state=data.get("state", "other"),
             source_input=data.get("source_input"),
             source_entity=data.get("source_entity"),
+            input_label=data.get("input_label"),
+            accounting=data.get("accounting"), included=data.get("included"),
+            rule_id=data.get("rule_id"),
         )
 
 
@@ -347,11 +396,13 @@ class MachineSnapshot:
     last_seen: datetime | None
     offline_since: datetime | None = None
     recovered_at: datetime | None = None
+    custom_label: str | None = None
+    rule_id: str | None = None
 
     @property
     def state_label(self) -> str:
         """Translated-neutral label of the state."""
-        return self.state.replace("_", " ").title()
+        return self.custom_label or self.state.replace("_", " ").title()
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise the snapshot for the websocket API."""
@@ -360,6 +411,8 @@ class MachineSnapshot:
             "name": self.name,
             "state": self.state,
             "state_label": self.state_label,
+            "custom_label": self.custom_label,
+            "rule_id": self.rule_id,
             "state_icon": default_state_icon(self.state),
             "state_color": default_state_color(self.state),
             "state_since": self.state_since.isoformat(),

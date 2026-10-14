@@ -37,3 +37,18 @@ Python tests still use HA boundaries and Node uses a minimal DOM. The new firmwa
 Firmware 1.2.1 moves HTTP server startup after WiFi initialization in both boot branches (saved STA credentials and empty-NVS configuration AP). Installed ESP32 core source confirms NetworkServer::begin opens a TCP socket, while WiFi initialization calls Network.begin/esp_netif_init. The reported crash occurs before the old web-server startup completion log.
 
 Two source-level regression guards pass for startup order and initialization in both WiFi helpers. These guards do not execute the sketch on hardware. Full ESP32 Dev Module compilation passed with Arduino ESP32 core 3.3.11 and PubSubClient 2.8 (977156 flash bytes, 49816 global RAM bytes); the user must confirm first boot on the actual board. No HA monitoring changes or NVS reset is required.
+
+
+## Universal modes release 1.4.0 — 2026-10-14
+
+Developed and tested in a local checkout, without using the running HA network share for development.
+
+- Python integration tests: **104 passed**. Imports use HA boundary stubs.
+- Node frontend tests: **44 passed** with a minimal DOM.
+- Firmware source guards: **2 passed**; firmware remains 1.2.1, unchanged in this release.
+- JavaScript syntax, Python AST/import checks, JSON and `git diff --check`: passed.
+- Regression coverage: arbitrary mode labels, profile serialization, accounting snapshots and migration from schema 3, future-only accounting edits, independent physical ON during profile edits, OR-of-AND truth table, fan-dependent cooling, unknown/disabled input conditions, deterministic priority, fallback, reload persistence, mode duration, graphical rules wizard and 16-group limit.
+- Browser coverage: strict <10-second gap grouping, independent rows, exact toggle, preserved offline/ON totals, Russian/local preference, mixed-offset event ordering, zoom-clipped gaps and bounded dense-burst styles. Grouping 10,000 intervals took roughly 8–12 ms on the development PC; Raspberry Pi/browser performance is not measured.
+- Existing concurrency, physical OFFLINE boundaries, work/idle/offline statistics, input names, row order, filters, reports, sidebar resources and event-driven/fallback regression tests remain passing.
+
+No new background job or backend polling was introduced. HA runtime acceptance remains a separate check after installation/restart; automated results do not assert live hardware validation.
