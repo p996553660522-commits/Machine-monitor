@@ -30,6 +30,7 @@ class ReleaseTests(unittest.TestCase):
             directory = r.build(self.item, self.files, Path(tmp), b'Notes')
             with zipfile.ZipFile(directory / "machine-monitor-1.4.0.zip") as archive:
                 names = archive.namelist()
+                self.assertTrue(all(i.create_system == 3 for i in archive.infolist()))
                 self.assertIn(r.COMPONENT + "manifest.json", names)
                 self.assertIn("INSTALL_RU.md", names)
                 self.assertFalse(any("tests" in n or ".storage" in n or "secrets" in n for n in names))

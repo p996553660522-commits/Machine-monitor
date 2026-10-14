@@ -78,6 +78,7 @@ def zip_bytes(files):
             if path.is_absolute() or ".." in path.parts or "\\" in name:
                 raise ValueError("Unsafe package path")
             info = zipfile.ZipInfo(name, (2020, 1, 1, 0, 0, 0))
+            info.create_system = 3
             info.compress_type = zipfile.ZIP_STORED
             info.external_attr = 0o100644 << 16
             archive.writestr(info, payload)
