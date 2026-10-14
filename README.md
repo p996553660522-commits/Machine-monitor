@@ -19,6 +19,12 @@ Equipment monitoring with **ESP32 → MQTT → Home Assistant**. The device obse
 - Автоматическая регистрация frontend и панели в боковом меню; копировать JS в `/www` не нужно.
 - Обновления по событиям, резервный опрос раз в 5 секунд, локальный таймер длительности.
 
+## Скачать версию
+
+**[GitHub Releases — готовые установочные архивы](https://github.com/p996553660522-commits/Machine-monitor/releases)** · [Каталог версий и откат](docs/VERSIONS_RU.md) · [CHANGELOG](CHANGELOG.md).
+
+Для HA выбирайте `machine-monitor-<version>.zip`, для ESP32 — отдельный firmware ZIP. У каждой версии есть точный тег/commit, SHA256 и инструкция. `main` — текущая разработка; для повторяемой установки используйте Release.
+
 ## Быстрый старт
 
 1. Настройте MQTT в Home Assistant и прошейте ESP32: [прошивка и подключение](docs/FIRMWARE_RU.md).

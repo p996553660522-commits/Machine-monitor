@@ -1066,3 +1066,10 @@ Never collapse these layers into a single winner-state timeline.
 The system should ultimately let the user look at a machine's page and understand, with minimal interpretation:
 
 > What did this machine actually do, when did it do it, which physical signals prove it, how much useful work occurred, and where was information unavailable?
+
+
+# 39. Versioned publication and installation
+
+Every future integration/firmware version must have a pinned full commit SHA in `releases.json`, immutable version tag, release notes, CHANGELOG entry, installation/rollback instructions, ZIP packages and SHA256SUMS. Use `docs/RELEASING.md` and the existing release workflow; do not invent a second release pipeline. Never move existing version tags or replace published assets. Known historical bugs must remain clearly labeled; never market a failing historical snapshot as safe for current HA.
+
+Test exact source snapshots and package contents before publishing. Download and verify published release packages before HA installation. Develop/test locally, not on the running HA network share. Preserve a consistent backup of integration files, config-entry configuration and Machine Monitor profile/history before migration; a code-only downgrade is not safe across incompatible history schemas. Never upload user history/configuration, credentials or local backups to GitHub.

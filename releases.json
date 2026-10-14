@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "releases": [
+    {
+      "tag": "v1.2.2",
+      "kind": "integration",
+      "version": "1.2.2",
+      "commit": "07660b88189d3ad6fa2326495f337c2d0573e761",
+      "firmware": "1.1",
+      "history_schema": 3,
+      "latest": false,
+      "prerelease": false,
+      "notes": "release_notes/v1.2.2.md"
+    },
+    {
+      "tag": "v1.3.0",
+      "kind": "integration",
+      "version": "1.3.0",
+      "commit": "bee9c0cd7f922e4851ee895ea02c4e8511a779bb",
+      "firmware": "1.2.1",
+      "history_schema": 3,
+      "latest": false,
+      "prerelease": false,
+      "notes": "release_notes/v1.3.0.md"
+    },
+    {
+      "tag": "v1.4.0",
+      "kind": "integration",
+      "version": "1.4.0",
+      "commit": "ab03aed246e3cd06c66842a8a9a0fd694a9c90d2",
+      "firmware": "1.2.1",
+      "history_schema": 4,
+      "latest": true,
+      "prerelease": false,
+      "notes": "release_notes/v1.4.0.md"
+    },
+    {
+      "tag": "firmware-v1.1.0",
+      "kind": "firmware",
+      "version": "1.1.0",
+      "commit": "07660b88189d3ad6fa2326495f337c2d0573e761",
+      "firmware": "1.1",
+      "history_schema": null,
+      "latest": false,
+      "prerelease": false,
+      "notes": "release_notes/firmware-v1.1.0.md"
+    },
+    {
+      "tag": "firmware-v1.2.0",
+      "kind": "firmware",
+      "version": "1.2.0",
+      "commit": "7d051bd64cf548ab48c2d408f09d0e90eb33db11",
+      "firmware": "1.2",
+      "history_schema": null,
+      "latest": false,
+      "prerelease": true,
+      "notes": "release_notes/firmware-v1.2.0.md"
+    },
+    {
+      "tag": "firmware-v1.2.1",
+      "kind": "firmware",
+      "version": "1.2.1",
+      "commit": "bee9c0cd7f922e4851ee895ea02c4e8511a779bb",
+      "firmware": "1.2.1",
+      "history_schema": null,
+      "latest": false,
+      "prerelease": false,
+      "notes": "release_notes/firmware-v1.2.1.md"
+    }
+  ]
+}

@@ -10,7 +10,7 @@
 
 ## 1. Получить файлы
 
-На странице GitHub выберите **Code → Download ZIP**, распакуйте архив. Либо выполните:
+Выберите нужную версию в [GitHub Releases](https://github.com/p996553660522-commits/Machine-monitor/releases) и скачайте integration ZIP из Assets. [Каталог версий и инструкция отката](VERSIONS_RU.md). Code → Download ZIP скачивает текущую разработку main, а не закреплённую версию. Для разработки можно выполнить:
 
 ```sh
 git clone https://github.com/p996553660522-commits/Machine-monitor.git
@@ -58,7 +58,7 @@ git clone https://github.com/p996553660522-commits/Machine-monitor.git
 3. Перезапустите Home Assistant и обновите вкладку браузера, при необходимости Ctrl+F5.
 4. Проверьте текущие состояния, имена и Diagnostics → History Storage.
 
-URL frontend автоматически содержит hash содержимого JS. История использует schema 3 с совместимым чтением прежних schema 1/2. Старые semantic-only данные не превращаются в выдуманную physical history: физические интервалы начинаются с момента их фактического сбора.
+URL frontend автоматически содержит hash содержимого JS. Версия 1.4.0 использует schema 4 с совместимым чтением прежних schema 1/2/3. Старые semantic-only данные не превращаются в выдуманную physical history: физические интервалы начинаются с момента их фактического сбора.
 
 ## Если что-то не работает
 

@@ -1,0 +1,57 @@
+name: Test and publish versioned releases
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: releases-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -B -m unittest discover -s tests -v
+      - run: python -B -m unittest discover -s custom_components/machine_monitor/tests -q
+      - run: node --check custom_components/machine_monitor/frontend/machine_monitor_card.js
+      - run: node --test custom_components/machine_monitor/tests/*.test.cjs
+      - run: git diff --check
+      - run: python -B scripts/release.py --out dist
+
+  publish:
+    needs: validate
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify packages and publish immutable version snapshots
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python -B scripts/release.py --out dist --publish
