@@ -66,6 +66,17 @@
       "latest": false,
       "prerelease": false,
       "notes": "release_notes/firmware-v1.2.1.md"
+    },
+    {
+      "tag": "firmware-v1.2.2",
+      "kind": "firmware",
+      "version": "1.2.2",
+      "commit": "a4e961f05683e52d10692610fe409381aeaad3e2",
+      "firmware": "1.2.2",
+      "history_schema": null,
+      "latest": false,
+      "prerelease": false,
+      "notes": "release_notes/firmware-v1.2.2.md"
     }
   ]
 }
