@@ -2,7 +2,7 @@
 
 Equipment monitoring with **ESP32 → MQTT → Home Assistant**. The device observes four physical signals; the integration keeps independent input history, resolves semantic machine states and presents a reusable monitoring dashboard.
 
-**Integration:** 1.4.0 · **Firmware:** Arduino sketch 1.2.1 (per-input enable switches) · **Interface:** Русский / English
+**Integration:** 1.4.0 · **Firmware:** Arduino sketch 1.2.2 (configurable MQTT broker + per-input enable switches) · **Interface:** Русский / English
 
 ## Возможности
 
@@ -40,7 +40,7 @@ Equipment monitoring with **ESP32 → MQTT → Home Assistant**. The device obse
 
 Install `custom_components/machine_monitor` into your HA configuration directory, restart HA, then add **Machine Monitor** under **Settings → Devices & services → Add integration**. Map one to four source binary sensors and configure their names, semantic categories, priorities and colors. Open **Machine Monitor** in the sidebar and select a machine. The integration serves and registers its bundled JavaScript automatically.
 
-Flash `firmware/MachineMonitor/MachineMonitor.ino` using Arduino IDE with Espressif ESP32 board support and the **PubSubClient** library. Inputs are GPIO32, GPIO33, GPIO25, GPIO26 with `INPUT_PULLUP`; LOW means active. Configure Wi-Fi and MQTT credentials using the device's local setup page. The supplied firmware uses `homeassistant.local:1883`; edit its broker constant before flashing if your broker differs. See [firmware guide](docs/FIRMWARE_RU.md) for setup, wiring boundaries and recovery behavior.
+Flash `firmware/MachineMonitor/MachineMonitor.ino` using Arduino IDE with Espressif ESP32 board support and the **PubSubClient** library. Inputs are GPIO32, GPIO33, GPIO25, GPIO26 with `INPUT_PULLUP`; LOW means active. Configure Wi-Fi and MQTT credentials using the device's local setup page. The firmware defaults to `homeassistant.local:1883`; set another IPv4 address or DNS hostname in its web configurator (MQTT broker address). See [firmware guide](docs/FIRMWARE_RU.md) for setup, wiring boundaries and recovery behavior.
 
 The system **monitors only**. It never starts, stops or controls equipment and is not a safety interlock. Physical histories are independent of the semantic priority winner. Offline time is unknown activity, not idle time.
 

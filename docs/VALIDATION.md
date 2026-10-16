@@ -52,3 +52,12 @@ Developed and tested in a local checkout, without using the running HA network s
 - Existing concurrency, physical OFFLINE boundaries, work/idle/offline statistics, input names, row order, filters, reports, sidebar resources and event-driven/fallback regression tests remain passing.
 
 No new background job or backend polling was introduced. HA runtime acceptance remains a separate check after installation/restart; automated results do not assert live hardware validation.
+
+
+## Firmware 1.2.2 — configurable MQTT broker, 2026-10-16
+
+- Full ESP32 Dev Module build passed: Arduino ESP32 core 3.3.11, PubSubClient 2.8. Flash **978592 / 1310720 bytes (74%)**, globals **49832 / 327680 bytes (15%)**. Existing installed ctags path override used; optional CLI discovery-tool downloads returned HTTP 403, but compilation/linking completed successfully.
+- **7 firmware tests passed**. These include compile-time assertions of the actual C++ broker-address validator, source guards for NVS/default/form/DNS wiring, and startup network ordering. The exact bodies of 19 existing acquisition, Wi-Fi recovery and MQTT protocol functions match firmware 1.2.1.
+- **104 integration Python tests, 44 frontend tests and 8 packaging tests passed**. JS syntax, Python AST, documentation links, whitespace and publication allowlist/secret checks passed.
+- Old NVS configurations keep homeassistant.local; the new mqtt_host key persists a configured IPv4/DNS hostname. Invalid input returns HTTP 400 before settings writes/reboot. Literal IPv4 bypasses DNS/mDNS; nonzero DNS errors are not accepted as success.
+- No runtime HA files, router settings, device credentials or industrial controls were changed. No board upload, hardware/AP/VPN acceptance or persistent NVS round-trip on a physical device was performed. After USB installation, set the broker to the actual address, save/reboot, verify MQTT CONNECTED and both enabled/disabled input behavior.

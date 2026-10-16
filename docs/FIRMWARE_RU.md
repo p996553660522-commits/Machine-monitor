@@ -1,6 +1,6 @@
 # Устройство мониторинга ESP32
 
-Исходный файл: [`firmware/MachineMonitor/MachineMonitor.ino`](../firmware/MachineMonitor/MachineMonitor.ino). Версия прошивки — `1.2.1`, HA-интеграции — `1.3.0`. В этой версии добавлено отключение отдельных линий; GPIO, LOW → ON и существующие state topics сохранены.
+Исходный файл: [`firmware/MachineMonitor/MachineMonitor.ino`](../firmware/MachineMonitor/MachineMonitor.ino). Версия прошивки — `1.2.2`, HA-интеграции — `1.4.0`. Настраивается адрес MQTT-брокера; сохранено отключение отдельных линий; GPIO, LOW → ON и существующие state topics сохранены.
 
 ## Оборудование и сигналы
 
@@ -27,9 +27,9 @@
    ```
 
 3. В Library Manager установите **PubSubClient** (Nick O'Leary). [Исходники библиотеки](https://github.com/knolleary/pubsubclient). WiFi, WebServer, Preferences и ESPmDNS входят в Arduino ESP32 core.
-4. Откройте `firmware/MachineMonitor/MachineMonitor.ino`. Имя файла и каталога скетча совпадают.
+4. Распакуйте всю папку `firmware/MachineMonitor` и откройте `MachineMonitor.ino`. Файл `BrokerAddress.h` должен остаться рядом со скетчем. Имя файла и каталога скетча совпадают.
 5. Выберите плату, соответствующую своему ESP32; для обычной DevKit используйте подходящий вариант **ESP32 Dev Module**, и выберите USB/COM port.
-6. Проверьте константы `MQTT_BROKER_NAME`, `MQTT_PORT`, `AP_PASSWORD` перед сборкой. Broker по умолчанию `homeassistant.local:1883`, setup-AP пароль фиксирован в исходнике. Замените пароль собственным до эксплуатации; не коммитьте production credentials.
+6. Адрес брокера теперь задаётся через веб-конфигуратор, редактировать скетч для этого не нужно. Значение по умолчанию `homeassistant.local:1883`; `MQTT_PORT` остаётся 1883. Setup-AP пароль `AP_PASSWORD` фиксирован в исходнике. Замените пароль собственным до эксплуатации; не коммитьте production credentials.
 7. Выполните **Verify**, затем **Upload**. Откройте Serial Monitor на **115200 baud**. Если плата требует ручного входа в bootloader, используйте её кнопку BOOT при загрузке.
 
 Прошивка проверена сборкой для `esp32:esp32:esp32` (ESP32 Dev Module), Arduino ESP32 core 3.3.11 и PubSubClient 2.8. Загрузка и проверка на физическом устройстве не выполнялись.
@@ -40,7 +40,7 @@
 
 1. Подключитесь к AP устройства.
 2. Откройте адрес из Serial Monitor, обычно **http://192.168.4.1/**.
-3. Введите Device name, Wi-Fi SSID/password, MQTT username/password.
+3. Введите Device name, Wi-Fi SSID/password, MQTT broker address, MQTT username/password.
 4. Нажмите **Save and reboot**. Настройки сохраняются в Preferences/NVS; устройство перезапускается примерно через 2 секунды.
 5. После подключения к домашней сети настройочная AP отключается. Страница остаётся доступной по IP ESP32 или `http://<hostname>.local/`, если локальная сеть разрешает имя.
 6. Проверьте Serial Monitor: Wi-Fi и MQTT connected, публикация Discovery и состояний. Найдите четыре sensor в интеграции MQTT Home Assistant.
@@ -104,3 +104,16 @@ Discovery использует оба availability topic (модуль и лин
 ## Исправление первого запуска — firmware 1.2.1
 
 В версии 1.2 сервер HTTP запускался до инициализации Wi-Fi/lwIP. На некоторых ESP32 core это приводило к `assert failed: xQueueSemaphoreTake` сразу после `Inputs initialized`. В 1.2.1 сервер запускается после выбора STA или конфигурационной AP. Перепрошейте устройство; стирать NVS или менять настройки HA не требуется. Первый запуск без сохранённого SSID должен показать STARTING CONFIGURATION AP, адрес AP, Web server started и SYSTEM READY.
+
+
+## MQTT через VPN и адрес брокера (firmware 1.2.2)
+
+В конфигураторе ESP32 появилось поле **MQTT broker address / Адрес MQTT-брокера**. Для второго завода: `192.168.0.22`. Указывайте только IPv4 или ASCII DNS-имя без `http://`, пути и `:1883`. Порт остаётся 1883. Нажмите **Save and reboot**; адрес сохраняется в Preferences/NVS и переживает отключение питания. Пустое поле возвращает `homeassistant.local`.
+
+IP подключается напрямую, без DNS/mDNS. Это подходит для маршрутизируемых сетей и IPsec при доступном MQTT-порте брокера. Имя `.local` по-прежнему требует разрешения в сети устройства. MQTT username/password должны соответствовать брокеру.
+
+При обновлении устройства со старой прошивкой новый ключ отсутствует: автоматически используется прежний `homeassistant.local`. Сохранённые Wi-Fi/MQTT credentials, имя, флаги линий и аппаратный deviceId сохраняются. Для сохранения NVS используйте прежнюю разметку разделов и **не включайте Erase All Flash**. Прошивка сама не очищает Preferences.
+
+Неверный адрес отклоняется HTTP 400 до записи любых настроек и перезапуска. Старый клиент, не передавший новое поле, сохраняет текущий broker. Проверка DNS принимает только успешный результат и ненулевой IP; код ошибки не превращается в ложный «broker found».
+
+Для установки скачайте [firmware-v1.2.2](https://github.com/p996553660522-commits/Machine-monitor/releases/tag/firmware-v1.2.2), распакуйте firmware ZIP и прошейте через USB. OTA не добавлялась. HA-интеграцию и роутер обновлять не требуется. После загрузки откройте страницу ESP32, заполните поле брокера и проверьте MQTT CONNECTED. При возврате к firmware 1.2.1 новый ключ останется в NVS, но старый код будет использовать свой фиксированный `homeassistant.local`.

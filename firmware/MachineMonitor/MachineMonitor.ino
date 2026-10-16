@@ -3,6 +3,7 @@
 #include <Preferences.h>
 #include <ESPmDNS.h>
 #include <PubSubClient.h>
+#include "BrokerAddress.h"
 
 // ============================================================
 // MACHINE MONITOR ESP32
@@ -88,6 +89,7 @@ unsigned long wifiDisconnectedSince = 0;
 // MQTT SETTINGS
 // -------------------------
 
+String mqttBrokerHost;
 String mqttUser;
 String mqttPassword;
 
@@ -198,6 +200,13 @@ void loadSettings()
     ""
   );
 
+  mqttBrokerHost = preferences.getString("mqtt_host", MQTT_BROKER_NAME);
+  mqttBrokerHost.trim();
+  if (!validMqttBrokerAddress(mqttBrokerHost.c_str()))
+  {
+    mqttBrokerHost = MQTT_BROKER_NAME;
+  }
+
   mqttUser = preferences.getString(
     "mqtt_user",
     ""
@@ -222,7 +231,8 @@ void saveSettings(
   const String& newSSID,
   const String& newWifiPassword,
   const String& newMQTTUser,
-  const String& newMQTTPassword
+  const String& newMQTTPassword,
+  const String& newMQTTHost
 )
 {
   preferences.begin("machine", false);
@@ -232,6 +242,7 @@ void saveSettings(
   preferences.putString("wifi_pass", newWifiPassword);
   preferences.putString("mqtt_user", newMQTTUser);
   preferences.putString("mqtt_pass", newMQTTPassword);
+  preferences.putString("mqtt_host", newMQTTHost);
   for (uint8_t i = 0; i < 4; i++)
   {
     inputEnabled[i] = server.hasArg("input" + String(i + 1));
@@ -495,14 +506,19 @@ bool resolveMQTTBroker(IPAddress& brokerIP)
   Serial.println("Resolving MQTT broker...");
 
   Serial.print("Hostname: ");
-  Serial.println(MQTT_BROKER_NAME);
+  Serial.println(mqttBrokerHost);
 
-  if (
-    WiFi.hostByName(
-      MQTT_BROKER_NAME,
-      brokerIP
-    )
-  )
+  // Literal IP avoids DNS/mDNS and works across routed factory VPNs.
+  if (brokerIP.fromString(mqttBrokerHost.c_str()))
+  {
+    Serial.print("MQTT broker IP: ");
+    Serial.println(brokerIP);
+    return true;
+  }
+
+  // Core 3.x can return a nonzero error code: only 1 means success.
+  const int resolved = WiFi.hostByName(mqttBrokerHost.c_str(), brokerIP);
+  if (resolved == 1 && brokerIP != IPAddress(0, 0, 0, 0))
   {
     Serial.print("MQTT broker found: ");
     Serial.println(brokerIP);
@@ -617,7 +633,7 @@ void publishDiscovery(uint8_t channel)
   payload += ".local/\",";
   payload += "\"manufacturer\":\"DIY\",";
   payload += "\"model\":\"ESP32 Machine Monitor\",";
-  payload += "\"sw_version\":\"1.2.1\"";
+  payload += "\"sw_version\":\"1.2.2\"";
 
   payload += "}";
 
@@ -1101,6 +1117,12 @@ String htmlPage()
   html += wifiPassword;
   html += "'>";
 
+  html += "<label>MQTT broker address / Адрес MQTT-брокера</label>";
+  html += "<input name='mqtthost' maxlength='253' value='";
+  html += mqttBrokerHost;
+  html += "' placeholder='192.168.0.22'>";
+  html += "<p>IP или DNS-имя без http:// и порта. Пустое поле: homeassistant.local. Порт: 1883.</p>";
+
   html += "<label>MQTT username</label>";
   html += "<input name='mqttuser' value='";
   html += mqttUser;
@@ -1112,7 +1134,7 @@ String htmlPage()
   html += "'>";
 
   html += "<p><b>MQTT broker:</b> ";
-  html += MQTT_BROKER_NAME;
+  html += mqttBrokerHost;
   html += ":";
   html += String(MQTT_PORT);
   html += "</p>";
@@ -1200,6 +1222,18 @@ void setupWebServer()
     HTTP_POST,
     []()
     {
+      // Old clients without this new field preserve the saved broker.
+      String newMQTTHost = server.hasArg("mqtthost")
+        ? server.arg("mqtthost") : mqttBrokerHost;
+      newMQTTHost.trim();
+      if (newMQTTHost.length() == 0) newMQTTHost = MQTT_BROKER_NAME;
+      if (!validMqttBrokerAddress(newMQTTHost.c_str()))
+      {
+        server.send(400, "text/plain; charset=utf-8",
+          "Некорректный адрес MQTT. Укажите IPv4 или DNS-имя без http://, порта и пути. Настройки не изменены.");
+        return;
+      }
+
       String newName =
         server.arg("name");
 
@@ -1227,7 +1261,8 @@ void setupWebServer()
         newSSID,
         newWifiPassword,
         newMQTTUser,
-        newMQTTPassword
+        newMQTTPassword,
+        newMQTTHost
       );
 
       server.send(
@@ -1272,6 +1307,8 @@ void setup()
   Serial.println("      MACHINE MONITOR ESP32");
   Serial.println("================================");
 
+  Serial.println("Firmware: 1.2.2");
+
   deviceId =
     makeDeviceId();
 
@@ -1301,7 +1338,7 @@ void setup()
   }
 
   Serial.print("MQTT broker: ");
-  Serial.println(MQTT_BROKER_NAME);
+  Serial.println(mqttBrokerHost);
 
   Serial.print("MQTT user: ");
 

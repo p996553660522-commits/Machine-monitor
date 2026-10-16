@@ -14,6 +14,7 @@
 
 | Версия в скетче | Релиз | Статус |
 |---|---|---|
+| 1.2.2 | [firmware-v1.2.2](https://github.com/p996553660522-commits/Machine-monitor/releases/tag/firmware-v1.2.2) | Настраиваемый broker IPv4/DNS; NVS, порт 1883 |
 | 1.2.1 | [firmware-v1.2.1](https://github.com/p996553660522-commits/Machine-monitor/releases/tag/firmware-v1.2.1) | Исправлен первый запуск |
 | 1.2 | [firmware-v1.2.0](https://github.com/p996553660522-commits/Machine-monitor/releases/tag/firmware-v1.2.0) | Prerelease: известен assert первого запуска, не рекомендуется |
 | 1.1 | [firmware-v1.1.0](https://github.com/p996553660522-commits/Machine-monitor/releases/tag/firmware-v1.1.0) | Архив, без отключения отдельных линий |
