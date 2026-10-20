@@ -6,7 +6,8 @@
 
 | Версия | Релиз | Точный коммит | История | Firmware снимка | Статус |
 |---|---|---|---|---|---|
-| 1.4.1 | [v1.4.1](https://github.com/p996553660522-commits/Machine-monitor/releases/tag/v1.4.1) | 8e4a1da657405ac499d1834f413f1c50c3024a52 | 4 | 1.2.2 | Текущая, исправлен запуск нескольких машин |
+| 1.4.2 | [v1.4.2](https://github.com/p996553660522-commits/Machine-monitor/releases/tag/v1.4.2) | fe36bed901ca63e1717215d0896cffecb9c65a29 | 4 | 1.2.2 | Текущая, одна подсказка Real Flow |
+| 1.4.1 | [v1.4.1](https://github.com/p996553660522-commits/Machine-monitor/releases/tag/v1.4.1) | 8e4a1da657405ac499d1834f413f1c50c3024a52 | 4 | 1.2.2 | Архив, исправлен запуск нескольких машин |
 | 1.4.0 | [v1.4.0](https://github.com/p996553660522-commits/Machine-monitor/releases/tag/v1.4.0) | ab03aed246e3cd06c66842a8a9a0fd694a9c90d2 | 4 | 1.2.1 | Архив, гонка запуска нескольких машин |
 | 1.3.0 | [v1.3.0](https://github.com/p996553660522-commits/Machine-monitor/releases/tag/v1.3.0) | bee9c0cd7f922e4851ee895ea02c4e8511a779bb | 3 | 1.2.1 | Архив, ColorSelector несовместим с актуальным HA |
 | 1.2.2 | [v1.2.2](https://github.com/p996553660522-commits/Machine-monitor/releases/tag/v1.2.2) | 07660b88189d3ad6fa2326495f337c2d0573e761 | 3 | 1.1 | Архив, ColorSelector несовместим с актуальным HA |
@@ -31,7 +32,7 @@
 - `release.json`: версия, точный commit, схема истории и сопряжённая firmware.
 - `RELEASE_NOTES.md`: изменения, проверки и известные ограничения.
 
-Для проверки в PowerShell: `Get-FileHash -Algorithm SHA256 .\machine-monitor-1.4.1.zip`. Сравните результат с SHA256SUMS.
+Для проверки в PowerShell: `Get-FileHash -Algorithm SHA256 .\machine-monitor-1.4.2.zip`. Сравните результат с SHA256SUMS.
 
 ## Установка
 

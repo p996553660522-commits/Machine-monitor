@@ -86,9 +86,21 @@
       "commit": "8e4a1da657405ac499d1834f413f1c50c3024a52",
       "firmware": "1.2.2",
       "history_schema": 4,
-      "latest": true,
+      "latest": false,
       "prerelease": false,
       "notes": "release_notes/v1.4.1.md",
+      "packaged_latest": true
+    },
+    {
+      "tag": "v1.4.2",
+      "kind": "integration",
+      "version": "1.4.2",
+      "commit": "fe36bed901ca63e1717215d0896cffecb9c65a29",
+      "firmware": "1.2.2",
+      "history_schema": 4,
+      "latest": true,
+      "prerelease": false,
+      "notes": "release_notes/v1.4.2.md",
       "packaged_latest": true
     }
   ]
