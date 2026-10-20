@@ -12,7 +12,7 @@ class Element {
   getBoundingClientRect() { return {left: 0, top: 0, bottom: 40, width: 1000}; }
   dispatchEvent(event) { this.lastEvent = event; }
   attachShadow() { this.shadowRoot = new Element('shadow'); }
-  appendChild(child) { this.children.push(child); return child; }
+  appendChild(child) { this.children.push(child); child.parentElement = this; return child; }
   addEventListener(name, fn) { this['on' + name] = fn; }
   set innerHTML(value) { this.children = []; }
   set textContent(value) { this._text = value == null ? '' : String(value); this.children = []; }

@@ -8,13 +8,13 @@ test('distinct configured colors reach tracks, markers, filters, tooltips and co
   const {card}=setup();prepare(card);
   const colors=['#ff8800','#00cc44','#22aaff','#cc33cc'];
   card._detail.input_timeline.rows.forEach((r,i)=>r.color=colors[i]);card._dirty=true;card._render();
-  let bars=walk(flowBox(card)).filter(n=>(n.title||'').startsWith('Input:'));
+  let bars=walk(flowBox(card)).filter(n=>(n._tooltipText||'').startsWith('Input:'));
   assert.deepEqual(new Set(bars.map(b=>b.style.background)),new Set(colors));
   assert.ok(bars.every(b=>b._inputColor===b.style.background));
   for (const color of colors) assert.ok(walk(card.shadowRoot).filter(n=>n.style.background===color).length>=4);
-  const offline=walk(flowBox(card)).filter(n=>(n.title||'').startsWith('OFFLINE'));
+  const offline=walk(flowBox(card)).filter(n=>(n._tooltipText||'').startsWith('OFFLINE'));
   assert.equal(offline.length,4);assert.ok(offline.every(n=>n.style.background.includes('repeating-linear-gradient')));
-  card._setMode('compact');bars=walk(flowBox(card)).filter(n=>(n.title||'').startsWith('Input:'));
+  card._setMode('compact');bars=walk(flowBox(card)).filter(n=>(n._tooltipText||'').startsWith('Input:'));
   assert.deepEqual(new Set(bars.map(b=>b.style.background)),new Set(colors));
 });
 
@@ -65,7 +65,7 @@ test('single machine card requests selected machine only, reuses flow and backen
   assert.ok(context.window.customCards.some(c=>c.type==='machine-monitor-machine-card'));
   card._hass=null;card.setConfig({...Card.getStubConfig(),machine_id:'m',show_status:false,show_totals:false,show_offline:false});
   assert.ok(!card.shadowRoot.textContent.includes('CURRENT STATUS'));assert.ok(!card.shadowRoot.textContent.includes('PHYSICAL INPUTS'));
-  assert.equal(walk(flowBox(card)).filter(n=>(n.title||'').startsWith('OFFLINE')).length,0);
+  assert.equal(walk(flowBox(card)).filter(n=>(n._tooltipText||'').startsWith('OFFLINE')).length,0);
 });
 
 test('visual editor machine and all configuration controls emit Lovelace config-changed',async()=>{

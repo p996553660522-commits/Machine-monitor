@@ -600,9 +600,9 @@ class RegressionTests(unittest.IsolatedAsyncioTestCase):
         card._selected='startup';card._machines=[{machine_id:'startup',name:'Test'}];
         card._detail=JSON.parse(fs.readFileSync(0,'utf8'));card._adoptVisibility(card._detail);
         card._dirty=true;card._render();
-        const bars=walk(flowBox(card)).filter(n=>String(n.title).startsWith('Input:'));
-        assert.equal(bars.length,1);assert.ok(bars[0].title.includes('Signal 4'));
-        assert.ok(parseFloat(bars[0].style.width)>0);assert.ok(bars[0].title.includes('End: NOW'));
+        const bars=walk(flowBox(card)).filter(n=>String(n._tooltipText).startsWith('Input:'));
+        assert.equal(bars.length,1);assert.ok(bars[0]._tooltipText.includes('Signal 4'));
+        assert.ok(parseFloat(bars[0].style.width)>0);assert.ok(bars[0]._tooltipText.includes('End: NOW'));
         """
         result=subprocess.run([node,'-e',script],input=json.dumps(connection.result),text=True,
                               cwd=ROOT,capture_output=True)

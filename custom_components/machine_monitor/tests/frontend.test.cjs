@@ -12,8 +12,8 @@ test('active render uses physical rows, filters, custom order and independent si
   const {card}=setup(); prepare(card);
   assert.deepEqual(flowLabels(card),['Signal 3','Signal 1','Signal 4','Signal 2']);
   assert.ok(card.shadowRoot.textContent.includes('INPUT FILTERS'));
-  assert.equal(walk(flowBox(card)).filter(n=>String(n.title).startsWith('Input:')).length,4);
-  assert.ok(walk(flowBox(card)).some(n=>String(n.title).includes('End: NOW')));
+  assert.equal(walk(flowBox(card)).filter(n=>String(n._tooltipText).startsWith('Input:')).length,4);
+  assert.ok(walk(flowBox(card)).some(n=>String(n._tooltipText).includes('End: NOW')));
 });
 
 test('all 16 visibility combinations retain every filter and require no fetch',()=>{
@@ -33,17 +33,17 @@ test('all 16 visibility combinations retain every filter and require no fetch',(
 
 test('compact flow renders concurrent physical inputs and offline tracks',()=>{
   const {card}=setup(); prepare(card); card._setMode('compact');
-  assert.equal(walk(flowBox(card)).filter(n=>String(n.title).startsWith('Input:')).length,4);
-  assert.ok(walk(flowBox(card)).some(n=>String(n.title).startsWith('OFFLINE')));
+  assert.equal(walk(flowBox(card)).filter(n=>String(n._tooltipText).startsWith('Input:')).length,4);
+  assert.ok(walk(flowBox(card)).some(n=>String(n._tooltipText).startsWith('OFFLINE')));
 });
 
 test('offline uses same track coordinates and is visible when all inputs hidden',()=>{
   const {card}=setup(); prepare(card);
-  let bands=walk(flowBox(card)).filter(n=>String(n.title).startsWith('OFFLINE'));
+  let bands=walk(flowBox(card)).filter(n=>String(n._tooltipText).startsWith('OFFLINE'));
   assert.equal(bands.length,4);
   assert.ok(bands.every(n=>n.style.left==='0%'&&n.style.width==='100%'));
   card._allVisible(false);
-  bands=walk(flowBox(card)).filter(n=>String(n.title).startsWith('OFFLINE'));
+  bands=walk(flowBox(card)).filter(n=>String(n._tooltipText).startsWith('OFFLINE'));
   assert.equal(bands.length,1);
 });
 
@@ -150,11 +150,11 @@ test('open null-end ON and ISO timezone clipping render finite positive segments
   ];
   for (const mode of ['detailed','compact']) {
     card._mode=mode;card._dirty=true;card._render();
-    const bars=walk(flowBox(card)).filter(n=>String(n.title).startsWith('Input:'));
+    const bars=walk(flowBox(card)).filter(n=>String(n._tooltipText).startsWith('Input:'));
     assert.equal(bars.length,2);
     assert.equal(bars[0].style.left,'0%');assert.equal(bars[0].style.width,'100%');
     assert.equal(bars[1].style.left,'50%');assert.equal(bars[1].style.width,'50%');
-    assert.ok(bars[1].title.includes('End: NOW'));
+    assert.ok(bars[1]._tooltipText.includes('End: NOW'));
     assert.ok(bars.every(b=>Number.isFinite(parseFloat(b.style.width))));
   }
 });
@@ -188,8 +188,8 @@ test('profile names are used for rows filters physical summaries and tooltips af
     assert.ok(section,heading);
     for(const name of names)assert.ok(walk(section).some(n=>n._text===name),heading+' '+name);
   }
-  const bars=walk(box).filter(n=>String(n.title).startsWith('Input:'));
-  for(const name of names)assert.ok(bars.some(n=>n.title.startsWith('Input: '+name+'\n')));
+  const bars=walk(box).filter(n=>String(n._tooltipText).startsWith('Input:'));
+  for(const name of names)assert.ok(bars.some(n=>n._tooltipText.startsWith('Input: '+name+'\n')));
 });
 
 
@@ -235,8 +235,8 @@ test('connection error preserves last timeline and offers a working retry',()=>{
 
 test('physical interval tooltips are reachable with touch and keyboard',()=>{
   const {card,context}=setup();prepare(card);
-  const bar=walk(flowBox(card)).find(n=>String(n.title).startsWith('Input:'));
-  assert.equal(bar.tabIndex,0);assert.equal(bar.role,'button');assert.equal(bar['aria-label'],bar.title);
+  const bar=walk(flowBox(card)).find(n=>String(n._tooltipText).startsWith('Input:'));
+  assert.equal(bar.tabIndex,0);assert.equal(bar.role,'button');assert.equal(bar['aria-label'],bar._tooltipText);
   const rows=walk(flowBox(card)).find(n=>n.onmousemove && n.onclick);
   rows.onclick({target:bar,clientX:20,clientY:20});
   const tooltip=context.document.body.children.at(-1);
@@ -255,6 +255,6 @@ test('disabled acquisition has an explicit label and preserves physical historic
   const summary=walk(card.shadowRoot).find(n=>n.className==='mm-summary-row');
   assert.ok(summary.textContent.includes('Disabled'));
   assert.ok(!summary.textContent.includes('UNKNOWN'));
-  assert.ok(walk(flowBox(card)).some(n=>String(n.title).includes(row.name)));
+  assert.ok(walk(flowBox(card)).some(n=>String(n._tooltipText).includes(row.name)));
   assert.ok(row.on_seconds>=0);
 });

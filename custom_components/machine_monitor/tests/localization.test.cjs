@@ -8,9 +8,9 @@ test('Russian follows HA language, translates all workspaces and keeps profile n
  card._detail.input_timeline.rows[0].name='Work';card._detail.input_timeline.rows[1].name='Input';
  card._dirty=true;card._render();
  for(const text of ['Мониторинг','Отчёты','Диагностика','ФИЛЬТРЫ ВХОДОВ','ФИЗИЧЕСКИЕ ВХОДЫ','Работа','ХРАНЕНИЕ ИСТОРИИ','Срок хранения:','30 дн.','Сегодня'])assert.ok(card.shadowRoot.textContent.includes(text),text);
- const bars=walk(card.shadowRoot).filter(n=>n.role==='button'&&n.title?.startsWith('Вход:'));
- assert.equal(bars.length,4);assert.ok(bars.some(n=>n.title.startsWith('Вход: Work')));assert.ok(bars.some(n=>n.title.startsWith('Вход: Input')));
- assert.ok(bars.every(n=>n.title.includes('Состояние: ВКЛ')&&n.title.includes('Конец: СЕЙЧАС')));
+ const bars=walk(card.shadowRoot).filter(n=>n.role==='button'&&n._tooltipText?.startsWith('Вход:'));
+ assert.equal(bars.length,4);assert.ok(bars.some(n=>n._tooltipText.startsWith('Вход: Work')));assert.ok(bars.some(n=>n._tooltipText.startsWith('Вход: Input')));
+ assert.ok(bars.every(n=>n._tooltipText.includes('Состояние: ВКЛ')&&n._tooltipText.includes('Конец: СЕЙЧАС')));
  assert.equal(card._detail.input_timeline.rows[0].name,'Work');
 });
 

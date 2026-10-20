@@ -1328,9 +1328,11 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
             background: "repeating-linear-gradient(45deg, #9e9e9e99 0 6px, #9e9e9e55 6px 12px)",
             border: "1px dashed #9e9e9e", boxSizing: "border-box", zIndex: "3"
           });
-          band.title = t("OFFLINE (unavailable)\nStart: ") + fmtDateTime(op.start) +
+          band._tooltipText = t("OFFLINE (unavailable)\nStart: ") + fmtDateTime(op.start) +
             t("\nEnd: ") + (op.open ? t("NOW") : fmtDateTime(op.end)) +
             t("\nDuration: ") + fmtDuration(op.duration);
+          band.tabIndex = 0;
+          band.setAttribute("aria-label", band._tooltipText);
           track.appendChild(band);
         });
       }
@@ -1371,10 +1373,10 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
               zIndex: "4", background: self._groupBackground(iv,r.color,clipped), borderRadius: "2px", opacity: "0.95" });
             bar.tabIndex=0;bar.setAttribute("role","button");
             bar._inputColor = r.color;
-            bar.title = t("Input: ") + r.name + t("\nState: ON\nStart: ") +
+            bar._tooltipText = t("Input: ") + r.name + t("\nState: ON\nStart: ") +
               fmtDateTime(iv.observed_start || iv.start) + t("\nEnd: ") + (iv.open ? t("NOW") : fmtDateTime(iv.end)) +
               t("\nDuration: ") + fmtDuration(iv.duration) + self._groupTooltip(iv);
-            bar.setAttribute("aria-label",bar.title);
+            bar.setAttribute("aria-label",bar._tooltipText);
             track.appendChild(bar);
           });
         });
@@ -1402,7 +1404,7 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
             background: r.color, display: "inline-block",
             flex: "0 0 7px" }));
           label.appendChild(el("span", null, r.name));
-          label.title = r.name; label.className = "mm-flow-label";
+          label._tooltipText = r.name; label.setAttribute("aria-label",r.name); label.className = "mm-flow-label";
           row.className = "mm-flow-row";
           row.appendChild(label);
 
@@ -1424,10 +1426,10 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
               zIndex: "4", background: self._groupBackground(iv,r.color,clipped), borderRadius: "2px", opacity: "0.9" });
             bar.tabIndex=0;bar.setAttribute("role","button");
             bar._inputColor = r.color;
-            bar.title = t("Input: ") + r.name + t("\nState: ON\nStart: ") +
+            bar._tooltipText = t("Input: ") + r.name + t("\nState: ON\nStart: ") +
               fmtDateTime(iv.observed_start || iv.start) + t("\nEnd: ") + (iv.open ? t("NOW") : fmtDateTime(iv.end)) +
               t("\nDuration: ") + fmtDuration(iv.duration) + self._groupTooltip(iv);
-            bar.setAttribute("aria-label",bar.title);
+            bar.setAttribute("aria-label",bar._tooltipText);
             track2.appendChild(bar);
           });
 
@@ -1469,17 +1471,21 @@ function heading(title,subtitle){var box=el("div");box.appendChild(named(el("div
 
       var tipEl = tip();
       function showTip(ev) {
+        // Do not use title: it would add a delayed native browser tooltip
+        // over this custom one. Resolve nested label/content targets too.
         var target=ev.target;
-        if(!target || !target.title){tipEl.style.display="none";return;}
+        while(target && target!==rowsBox && !target._tooltipText) target=target.parentElement;
+        if(!target || !target._tooltipText){tipEl.style.display="none";return;}
         var rect=target.getBoundingClientRect(),x=Number.isFinite(ev.clientX)?ev.clientX:rect.left,
             y=Number.isFinite(ev.clientY)?ev.clientY:rect.bottom;
         tipEl.style.display="block";tipEl.style.whiteSpace="pre-line";
         tipEl.style.left=Math.max(8,Math.min(window.innerWidth-278,x+14))+"px";
         tipEl.style.top=Math.max(8,Math.min((window.innerHeight||800)-180,y+14))+"px";
-        tipEl.style.borderLeft="4px solid "+(target._inputColor||"#9e9e9e");tipEl.textContent=target.title;
+        tipEl.style.borderLeft="4px solid "+(target._inputColor||"#9e9e9e");tipEl.textContent=target._tooltipText;
       }
       rowsBox.addEventListener("mousemove",showTip);
       rowsBox.addEventListener("click",showTip);
+      rowsBox.addEventListener("focusin",showTip);
       rowsBox.addEventListener("keydown",function(event){
         if(event.key==="Escape")tipEl.style.display="none";
         else if(event.key==="Enter"||event.key===" "){event.preventDefault();showTip(event);}

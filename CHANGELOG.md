@@ -1,5 +1,12 @@
 # История изменений Machine Monitor
 
+## Integration 1.4.2 — 2026-10-20
+
+- Remove native browser title tooltips that duplicated the styled Real Flow tooltip after a hover delay, in detailed/compact input bars, OFFLINE bands and row labels. Preserve translated interval metadata and accessible labels.
+- Keep mouse/touch/keyboard interaction, add keyboard-focus display and handle nested label targets. No monitoring, history, statistics, MQTT or firmware changes; schema 4.
+- Local validation: 105 integration Python tests, 47 frontend tests, 9 release tests, JavaScript syntax.
+
+
 ## Integration 1.4.1 — 2026-10-20
 
 - Serialize shared coordinator initialization when HA sets up several config entries concurrently. Previously independent coordinators could overwrite each other, leaving a configured machine absent from the overview/API.

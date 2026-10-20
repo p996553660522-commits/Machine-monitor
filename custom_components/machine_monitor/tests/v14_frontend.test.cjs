@@ -19,12 +19,12 @@ test('active grouped and exact controls render both modes without backend reques
  r.intervals=[{start:new Date(base+1000).toISOString(),end:new Date(base+20000).toISOString(),duration:19},
  {start:new Date(base+25000).toISOString(),end:new Date(base+40000).toISOString(),duration:15}];
  card._callWs=()=>{throw Error('grouping cannot fetch');};card._dirty=true;card._render();
- let bars=walk(flowBox(card)).filter(n=>String(n.title).includes('Grouped signals'));
- assert.equal(bars.length,1);assert.ok(bars[0].title.includes('Actual ON time'));assert.ok(bars[0].style.background.includes('transparent'));
+ let bars=walk(flowBox(card)).filter(n=>String(n._tooltipText).includes('Grouped signals'));
+ assert.equal(bars.length,1);assert.ok(bars[0]._tooltipText.includes('Actual ON time'));assert.ok(bars[0].style.background.includes('transparent'));
  const exact=walk(card.shadowRoot).find(n=>n._text==='Exact history');exact.onclick();
- assert.equal(walk(flowBox(card)).filter(n=>String(n.title).includes('Grouped signals')).length,0);
+ assert.equal(walk(flowBox(card)).filter(n=>String(n._tooltipText).includes('Grouped signals')).length,0);
  card._mode='compact';card._groupShort=true;card._dirty=true;card._render();
- assert.equal(walk(flowBox(card)).filter(n=>String(n.title).includes('Grouped signals')).length,1);
+ assert.equal(walk(flowBox(card)).filter(n=>String(n._tooltipText).includes('Grouped signals')).length,1);
 });
 test('custom mode names bypass semantic translations in status and events',()=>{
  const {card}=setup();prepare(card);
