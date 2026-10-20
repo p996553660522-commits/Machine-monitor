@@ -17,6 +17,7 @@ required to import the package is imported lazily inside the setup functions.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -144,14 +145,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # loaded here instead of at package import time.
     from .coordinator import MachineMonitorCoordinator
 
-    coordinator: MachineMonitorCoordinator | None = hass.data[DOMAIN].get(
-        "coordinator"
-    )
-    if coordinator is None:
-        coordinator = MachineMonitorCoordinator(hass)
-        await coordinator.async_refresh()
-        await coordinator.async_register_shutdown()
-        hass.data[DOMAIN]["coordinator"] = coordinator
+    # HA may set up several entries concurrently. Keep initialization behind
+    # one shared lock: both refresh and shutdown registration can yield before
+    # the ready coordinator is published. Otherwise one entry can overwrite
+    # another entry's coordinator and disappear from the shared WebSocket API.
+    domain_data = hass.data[DOMAIN]
+    setup_lock = domain_data.setdefault("coordinator_setup_lock", asyncio.Lock())
+    async with setup_lock:
+        coordinator: MachineMonitorCoordinator | None = domain_data.get("coordinator")
+        if coordinator is None:
+            coordinator = MachineMonitorCoordinator(hass)
+            await coordinator.async_refresh()
+            await coordinator.async_register_shutdown()
+            domain_data["coordinator"] = coordinator
 
     # Build or load the machine profile before the device is registered so the
     # name matches the profile.

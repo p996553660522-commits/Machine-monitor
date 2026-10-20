@@ -1,5 +1,12 @@
 # История изменений Machine Monitor
 
+## Integration 1.4.1 — 2026-10-20
+
+- Serialize shared coordinator initialization when HA sets up several config entries concurrently. Previously independent coordinators could overwrite each other, leaving a configured machine absent from the overview/API.
+- Add concurrent setup/API and two-machine event-driven overview regressions. No physical/semantic history, MQTT, firmware or Real Flow rendering changes; history schema remains 4.
+- Local validation: 105 Python integration tests, 45 frontend tests, JavaScript syntax. Live restart acceptance is still required. A separate transient Lovelace configuration error was observed but not reproduced after refresh; its cause is not established by this fix.
+
+
 Номера интеграции и ESP32 firmware независимы. Готовые пакеты: [GitHub Releases](https://github.com/p996553660522-commits/Machine-monitor/releases). Точные коммиты, схемы истории и compatibility notes: [каталог версий](docs/VERSIONS_RU.md).
 
 ## Интеграция 1.4.0
