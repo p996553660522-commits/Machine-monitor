@@ -41,6 +41,8 @@ def validate_catalog(data):
             raise ValueError("Invalid notes path")
         if not isinstance(item["latest"], bool) or not isinstance(item["prerelease"], bool):
             raise ValueError("Invalid release flags")
+        if "packaged_latest" in item and not isinstance(item["packaged_latest"], bool):
+            raise ValueError("Invalid immutable package flag")
         if item["latest"] and (kind != "integration" or item["prerelease"]):
             raise ValueError("Latest must be a stable integration")
         tags.add(tag)
@@ -163,7 +165,12 @@ def build(item, files, out, notes):
     validate_snapshot(item, files)
     release_dir = out / item["tag"]
     release_dir.mkdir(parents=True, exist_ok=True)
-    metadata = json.dumps(item, ensure_ascii=False, indent=2).encode("utf-8")
+    # The catalog's latest pointer changes when a new version is released.
+    # Preserve the original value embedded in already published installers.
+    package_item = dict(item)
+    packaged_latest = package_item.pop("packaged_latest", item["latest"])
+    package_item["latest"] = packaged_latest
+    metadata = json.dumps(package_item, ensure_ascii=False, indent=2).encode("utf-8")
     extras = {"INSTALL_RU.md": installation(item), "RELEASE_NOTES.md": notes, "release.json": metadata}
     packages = {}
     if item["kind"] == "integration":

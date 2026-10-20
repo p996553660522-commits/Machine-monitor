@@ -32,7 +32,8 @@
       "history_schema": 4,
       "latest": false,
       "prerelease": false,
-      "notes": "release_notes/v1.4.0.md"
+      "notes": "release_notes/v1.4.0.md",
+      "packaged_latest": true
     },
     {
       "tag": "firmware-v1.1.0",
@@ -87,7 +88,8 @@
       "history_schema": 4,
       "latest": true,
       "prerelease": false,
-      "notes": "release_notes/v1.4.1.md"
+      "notes": "release_notes/v1.4.1.md",
+      "packaged_latest": true
     }
   ]
 }

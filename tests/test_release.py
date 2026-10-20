@@ -55,6 +55,17 @@ class ReleaseTests(unittest.TestCase):
             b = r.build(self.item, dict(reversed(list(self.files.items()))), Path(tmp) / "b", b'Notes')
             self.assertEqual({p.name:p.read_bytes() for p in a.iterdir()}, {p.name:p.read_bytes() for p in b.iterdir()})
 
+    def test_promoting_next_release_preserves_every_previous_asset(self):
+        original = dict(self.item)
+        original.pop("packaged_latest", None)
+        original["latest"] = True
+        archived = {**original, "latest": False, "packaged_latest": True}
+        with tempfile.TemporaryDirectory() as tmp:
+            a = r.build(original, self.files, Path(tmp) / "a", b'Notes')
+            b = r.build(archived, self.files, Path(tmp) / "b", b'Notes')
+            self.assertEqual({p.name:p.read_bytes() for p in a.iterdir()},
+                             {p.name:p.read_bytes() for p in b.iterdir()})
+
     def test_version_schema_and_secret_errors_prevent_build(self):
         for key, value in [(r.COMPONENT + "manifest.json", b'{"version":"1.3.0"}'),
                            (r.COMPONENT + "storage.py", b'data = {"history_schema_version": 3}'),
